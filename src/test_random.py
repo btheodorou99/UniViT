@@ -64,7 +64,7 @@ for task in task_map:
     else:
         raise ValueError('Invalid task type')
     
-    downstream = DownstreamModel(config.hidden_dim, label_size).to(device)
+    downstream = DownstreamModel(config.representation_size, label_size).to(device)
     optimizer = torch.optim.Adam(downstream.parameters(), lr=config.downstream_lr)
     for epoch in tqdm(range(config.downstream_epochs), leave=False, desc=f'{task} Tuning'):
         batches_since_step = 0
@@ -72,7 +72,7 @@ for task in task_map:
             batch_images = batch_images.to(device)
             batch_labels = batch_labels.to(device)
             with torch.no_grad():
-                representations = torch.randn(batch_images.size(0), config.hidden_dim).to(device)
+                representations = torch.randn(batch_images.size(0), config.representation_size).to(device)
             predictions = downstream(representations)
             predictions = train_activation(predictions)
             loss = loss_fn(predictions, batch_labels)
@@ -90,7 +90,7 @@ for task in task_map:
         batch_images = batch_images.to(device)
         batch_labels = batch_labels.to(device)
         with torch.no_grad():
-            representations = torch.randn(batch_images.size(0), config.hidden_dim).to(device)
+            representations = torch.randn(batch_images.size(0), config.representation_size).to(device)
             predictions = downstream(representations)
             predictions = test_activation(predictions)
             task_preds.extend(predictions.cpu().tolist())

@@ -47,7 +47,7 @@ for modality in ['Chest X-Ray (MIMIC)', 'Chest X-Ray (CheXpert)', 'Skin Lesion',
                 config.num_layers, 
                 config.num_secondary_layers,
                 config.num_heads, 
-                config.hidden_dim, 
+                config.projection_size, 
                 config.mlp_dim, 
                 config.dropout, 
                 config.attention_dropout,
@@ -121,13 +121,15 @@ for modality in ['Chest X-Ray (MIMIC)', 'Chest X-Ray (CheXpert)', 'Skin Lesion',
             loss = loss / batches_per_step
             loss.backward()
             step_loss += loss.detach().cpu().item()
+        center_cls, center_patch = update_centers(center_cls, center_patch, cls_teacher1, cls_teacher2, embd_seq_teacher1, embd_seq_teacher2)
             batches_since_step += 1
 
             if batches_since_step == batches_per_step:
                 batches_since_step = 0
                 optimizer.step()
                 optimizer.zero_grad()
-                update_teacher_model(teacher_model, model)
+                momentum_val = 1.0 + 0.5 * (config.momentum - 1.0) * (1 + np.cos(np.pi * num_steps / config.tot_steps))
+            update_teacher_model(teacher_model, model, momentum_val)
                 running_loss = running_loss[-999:] + [step_loss]
                 step_loss = 0
                 pbar.set_description(f'Current Loss: {np.mean(running_loss):.4f}')

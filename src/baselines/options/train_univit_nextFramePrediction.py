@@ -39,7 +39,7 @@ model = UniViT(config.max_height,
                config.representation_size, 
                config.num_layers, 
                config.num_heads, 
-               config.hidden_dim, 
+               config.projection_size, 
                config.mlp_dim, 
                config.dropout, 
                config.attention_dropout,
@@ -65,18 +65,26 @@ def update_teacher_model(teacher_model, student_model, alpha=0.999):
         for teacher_param, student_param in zip(teacher_model.parameters(), student_model.parameters()):
             teacher_param.data.mul_(alpha).add_(student_param.data, alpha=1 - alpha)
 
-def cls_loss_fn(student_emb, teacher_emb):
-    student_norm = F.log_softmax(student_emb, dim=-1)
-    teacher_norm = F.softmax(teacher_emb, dim=-1)
-    loss = F.kl_div(student_norm, teacher_norm, reduction='batchmean')
+def cls_loss_fn(student_cls, teacher_cls, center):
+    student_cls = F.log_softmax(student_cls / config.student_temp, dim=-1)
+    teacher_cls = F.softmax((teacher_cls - center) / config.teacher_cls_temp, dim=-1)
+    loss = torch.sum(-teacher_cls * student_cls, dim=-1).mean()
     return loss
 
-def mim_loss_fn(student_emb, teacher_emb, mask):
-    student_norm = F.log_softmax(student_emb, dim=-1) * mask.unsqueeze(-1)
-    teacher_norm = F.softmax(teacher_emb, dim=-1) * mask.unsqueeze(-1)
-    loss = F.kl_div(student_norm.view(-1, config.representation_size), teacher_norm.view(-1, config.representation_size), reduction='batchmean')
-    loss /= (mask.sum() / mask.numel()) # scale loss by mask
+def mim_loss_fn(student_emb, teacher_emb, center, mask):
+    student_emb = F.log_softmax(student_emb / config.student_temp, dim=-1)
+    teacher_emb = F.softmax((teacher_emb - center) / config.teacher_patch_temp, dim=-1)
+    loss = torch.sum(-teacher_emb * student_emb, dim=-1)
+    loss = torch.sum(loss * mask, dim=-1) / mask.sum(dim=-1).clamp(min=1.0)
+    loss = loss.mean()
     return loss
+
+def update_centers(center_cls, center_patch, cls1, cls2, embd_seq1, embd_seq2):
+    cls = torch.cat([cls1, cls2], dim=0).mean(dim=0)
+    center_cls = config.center_momentum * center_cls + (1 - config.center_momentum) * cls
+    patch = torch.cat([embd_seq1, embd_seq2], dim=0).mean(dim=(0,1))
+    center_patch = config.center_momentum * center_patch + (1 - config.center_momentum) * patch
+    return center_cls, center_patch
 
 def framePred_loss_fn(time_pred, slice_pred, time_seq, slice_seq, time_mask, slice_mask):
     time_pred = F.normalize(time_pred, dim=-1)
@@ -101,6 +109,8 @@ pbar.update(num_steps)
 loss_plot = []
 step_loss = 0
 batches_since_step = 0
+center_cls = torch.zeros(1, config.projection_size).to(device)
+center_patch = torch.zeros(1, 1, config.projection_size).to(device)
 while num_steps < config.tot_steps:
     running_loss = []
     for batch_images, batch_dimensions in train_loader:
@@ -124,13 +134,15 @@ while num_steps < config.tot_steps:
         loss = loss / batches_per_step
         loss.backward()
         step_loss += loss.detach().cpu().item()
+        center_cls, center_patch = update_centers(center_cls, center_patch, cls_teacher1, cls_teacher2, embd_seq_teacher1, embd_seq_teacher2)
         batches_since_step += 1
 
         if batches_since_step == batches_per_step:
             batches_since_step = 0
             optimizer.step()
             optimizer.zero_grad()
-            update_teacher_model(teacher_model, model)
+            momentum_val = 1.0 + 0.5 * (config.momentum - 1.0) * (1 + np.cos(np.pi * num_steps / config.tot_steps))
+            update_teacher_model(teacher_model, model, momentum_val)
             running_loss = running_loss[-999:] + [step_loss]
             step_loss = 0
             pbar.set_description(f'Current Loss: {np.mean(running_loss):.4f}')

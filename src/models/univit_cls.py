@@ -66,7 +66,7 @@ class EncoderBlock(nn.Module):
     def __init__(
         self,
         num_heads: int,
-        hidden_dim: int,
+        representation_size: int,
         mlp_dim: int,
         dropout: float,
         attention_dropout: float,
@@ -76,16 +76,16 @@ class EncoderBlock(nn.Module):
         self.num_heads = num_heads
 
         # Attention block
-        self.ln_1 = norm_layer(hidden_dim)
-        self.self_attention = nn.MultiheadAttention(hidden_dim, num_heads, dropout=attention_dropout, batch_first=True)
+        self.ln_1 = norm_layer(representation_size)
+        self.self_attention = nn.MultiheadAttention(representation_size, num_heads, dropout=attention_dropout, batch_first=True)
         self.dropout = nn.Dropout(dropout)
 
         # MLP block
-        self.ln_2 = norm_layer(hidden_dim)
-        self.mlp = MLPBlock(hidden_dim, mlp_dim, dropout)
+        self.ln_2 = norm_layer(representation_size)
+        self.mlp = MLPBlock(representation_size, mlp_dim, dropout)
 
     def forward(self, input: torch.Tensor, mask: Optional[torch.Tensor] = None):
-        torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, hidden_dim) got {input.shape}")
+        torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, representation_size) got {input.shape}")
         x = self.ln_1(input)
         x, _ = self.self_attention(x, x, x, key_padding_mask=mask, need_weights=False)
         x = self.dropout(x)
@@ -103,7 +103,7 @@ class Encoder(nn.Module):
         self,
         num_layers: int,
         num_heads: int,
-        hidden_dim: int,
+        representation_size: int,
         mlp_dim: int,
         dropout: float,
         attention_dropout: float,
@@ -117,18 +117,36 @@ class Encoder(nn.Module):
         for i in range(num_layers):
             layers[f"encoder_layer_{i}"] = EncoderBlock(
                 num_heads,
-                hidden_dim,
+                representation_size,
                 mlp_dim,
                 dropout,
                 attention_dropout,
                 norm_layer,
             )
         self.layers = MaskedSequential(layers)
-        self.ln = norm_layer(hidden_dim)
+        self.ln = norm_layer(representation_size)
 
     def forward(self, input: torch.Tensor, mask: Optional[torch.Tensor] = None):
-        torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, hidden_dim) got {input.shape}")
+        torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, representation_size) got {input.shape}")
         return self.ln(self.layers(self.dropout(input), mask))
+
+class ProjectionHead(nn.Module):
+    def __init__(self, in_dim, out_dim, nlayers=3, hidden_dim=2048, bottleneck_dim=256):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(in_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, bottleneck_dim),
+        )
+        self.last_layer = nn.Linear(bottleneck_dim, out_dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.net(x)
+        x = nn.normalize(x, p=2, dim=-1)
+        x = self.last_layer(x)
+        return x
 
 class UniViT(nn.Module):
     def __init__(
@@ -142,7 +160,7 @@ class UniViT(nn.Module):
         representation_size: int,
         num_layers: int,
         num_heads: int,
-        hidden_dim: int,
+        projection_size: int,
         mlp_dim: int,
         dropout: float = 0.0,
         attention_dropout: float = 0.0,
@@ -160,35 +178,36 @@ class UniViT(nn.Module):
         self.image_channels = num_channels
         self.patch_size = patch_size
         self.representation_size = representation_size
-        self.hidden_dim = hidden_dim
+        self.projection_size = projection_size
         self.mlp_dim = mlp_dim
         self.dropout = dropout
         self.attention_dropout = attention_dropout
         self.mask_prob = mask_prob
         self.norm_layer = norm_layer
         self.conv_proj = nn.Conv2d(
-            in_channels=self.image_channels, out_channels=hidden_dim, kernel_size=patch_size, stride=patch_size
+            in_channels=self.image_channels, out_channels=representation_size, kernel_size=patch_size, stride=patch_size
         )
+        self.masked_embed = nn.Parameter(torch.zeros(1, representation_size))
         
-        self.slice_embedding = nn.Embedding(self.image_slice, hidden_dim)
-        self.time_embedding = nn.Embedding(self.image_time, hidden_dim)
-        self.height_embedding = nn.Linear(1, hidden_dim)
-        self.width_embedding = nn.Linear(1, hidden_dim)
+        self.slice_embedding = nn.Embedding(self.image_slice, representation_size)
+        self.time_embedding = nn.Embedding(self.image_time, representation_size)
+        self.height_embedding = nn.Linear(1, representation_size)
+        self.width_embedding = nn.Linear(1, representation_size)
 
         seq_length = (self.image_height // patch_size) * (self.image_width // patch_size) * self.image_slice * self.image_time
 
         # Add class tokens
-        self.class_token = nn.Parameter(torch.zeros(1, 1, hidden_dim))
+        self.class_token = nn.Parameter(torch.zeros(1, 1, representation_size))
         seq_length += 1
-        self.time_class_tokens = nn.Parameter(torch.zeros(1, self.image_time, hidden_dim))
+        self.time_class_tokens = nn.Parameter(torch.zeros(1, self.image_time, representation_size))
         seq_length += self.image_time
-        self.slice_class_tokens = nn.Parameter(torch.zeros(1, self.image_slice, hidden_dim))
+        self.slice_class_tokens = nn.Parameter(torch.zeros(1, self.image_slice, representation_size))
         seq_length += self.image_slice
 
         self.encoder = Encoder(
             num_layers,
             num_heads,
-            hidden_dim,
+            representation_size,
             mlp_dim,
             dropout,
             attention_dropout,
@@ -211,11 +230,11 @@ class UniViT(nn.Module):
             nn.init.zeros_(self.heads.head.weight)
             nn.init.zeros_(self.heads.head.bias)
             
-        self.cls_head = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, representation_size))
-        self.embed_head = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, representation_size))
+        self.cls_head = ProjectionHead(representation_size, projection_size)
+        self.embed_head = ProjectionHead(representation_size, projection_size)
         self.swap_prob = 0.2
         if clsExtraHead:
-            self.cls_extra_head = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, hidden_dim))
+            self.cls_extra_head = nn.Sequential(nn.Linear(representation_size, representation_size), nn.ReLU(), nn.Linear(representation_size, representation_size))
 
     def _process_input(self, x: torch.Tensor) -> torch.Tensor:
         b, t, s, c, h, w = x.shape
@@ -228,12 +247,12 @@ class UniViT(nn.Module):
         n_h = h // p
         n_w = w // p
 
-        # (b, t, s, c, h, w) -> (b, hidden_dim, t * s * n_h * n_w)
+        # (b, t, s, c, h, w) -> (b, representation_size, t * s * n_h * n_w)
         x = x.reshape(b * t * s, c, h, w)
         x = self.conv_proj(x)
-        x = x.view(b, t, s, self.hidden_dim, n_h, n_w).permute(0, 3, 1, 2, 4, 5).reshape(b, self.hidden_dim, t * s * n_h * n_w)
+        x = x.view(b, t, s, self.representation_size, n_h, n_w).permute(0, 3, 1, 2, 4, 5).reshape(b, self.representation_size, t * s * n_h * n_w)
 
-        # (n, hidden_dim, (seq_len)) -> (n, (seq_len), hidden_dim)
+        # (n, representation_size, (seq_len)) -> (n, (seq_len), representation_size)
         # The self attention layer expects inputs in the format (N, S, E)
         # where S is the source sequence length, N is the batch size, E is the
         # embedding dimension
@@ -327,21 +346,22 @@ class UniViT(nn.Module):
         x = x + pos_emb
         return x, mask, pos_mask
     
-    def _mask_sequence(self, orig_mask: torch.Tensor) -> torch.Tensor:
-        mask = torch.rand_like(orig_mask, dtype=torch.float) < self.mask_prob
-        mask = mask | orig_mask
+    def _mask_sequence(self, x: torch.Tensor, dim: torch.Tensor) -> torch.Tensor:
+        bs = x.shape[0]
+        mask = torch.rand((bs, self.seq_length), dtype=torch.float, device=x.device) < self.mask_prob
         return mask
     
     def forward(self, x: torch.Tensor, dimensions: torch.Tensor, seqMask: bool = False, train: bool = False, extraCls: bool = False):
         # Reshape and permute the input tensor
         x = self._process_input(x)
         n = x.shape[0]
-        
-        x, orig_mask, time_mask, slice_mask = self._prepare_sequence(x, dimensions)
         if seqMask:
-            mask = self._mask_sequence(orig_mask)
+            mask = self._mask_sequence(x, dimensions)
         else:
-            mask = orig_mask
+            mask = torch.zeros((n, self.seq_length), dtype=torch.bool, device=x.device)
+            
+        x = (mask.float() * self.masked_embed) + ((~mask).float() * x)
+        x, orig_mask, time_mask, slice_mask = self._prepare_sequence(x, dimensions)
 
         # Expand the class token to the full batch
         batch_class_token = self.class_token.expand(n, -1, -1)
@@ -349,17 +369,16 @@ class UniViT(nn.Module):
         batch_time_class_tokens = self.time_class_tokens.expand(n, -1, -1)
         batch_slice_class_tokens = self.slice_class_tokens.expand(n, -1, -1)
         x = torch.cat([batch_class_token, batch_time_class_tokens, batch_slice_class_tokens, x], dim=1)
-        mask = torch.cat([batch_class_mask, time_mask, slice_mask, mask], dim=1)
+        encoder_mask = torch.cat([batch_class_mask, time_mask, slice_mask, orig_mask], dim=1)
 
-        x = self.encoder(x, mask)
+        x = self.encoder(x, encoder_mask)
         
         if train:
-            x = x[:, 1:]
-            mask = mask[:, 1:]
+            cls, x = x[:, 0], x[:, 1:]
             if extraCls:
-                return self.embed_head(x), self.cls_extra_head(x), x, mask, orig_mask, time_mask, slice_mask
+                return self.cls_head(cls), self.embed_head(x), self.cls_extra_head(x), x, mask, orig_mask, time_mask, slice_mask
             
-            return self.embed_head(x), mask, orig_mask, time_mask, slice_mask
+            return self.cls_head(cls), self.embed_head(x), mask, orig_mask, time_mask, slice_mask
         
         return x
     

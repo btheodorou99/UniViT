@@ -1,7 +1,7 @@
-# Make patch size 14
-# Make max height/width 392
-# Limit time/slice if needed
-# Make output representation 768
+# Original patch size 16
+# Adjust Max height/width
+# Increase Max slice if possible
+# Note original 400 epochs of 1.2 million images, ~500 million images with batch size 256 so 2 million steps
 
 class Config(object):
     def __init__(
@@ -18,16 +18,21 @@ class Config(object):
             num_layers=12,
             num_secondary_layers=4,
             num_heads=12,
-            hidden_dim=576,
+            projection_size=8192,
             mlp_dim=1024,
             dropout=0.0,
             attention_dropout=0.0,
-            mask_prob=0.15,
+            mask_prob=0.3,
+            student_temp=0.1,
+            teacher_cls_temp=0.04,
+            teacher_patch_temp=0.07,
+            momentum=0.999,
+            center_momentum=0.9,
             
             batch_size=8,
             effective_batch_size=64,
             lr=5e-4,
-            lr_rampup=1000,
+            lr_rampup=5000,
             tot_steps=100000,
             num_workers=8,
             
@@ -46,11 +51,16 @@ class Config(object):
         self.num_layers = num_layers
         self.num_secondary_layers = num_secondary_layers
         self.num_heads = num_heads
-        self.hidden_dim = hidden_dim
+        self.projection_size = projection_size
         self.mlp_dim = mlp_dim
         self.dropout = dropout
         self.attention_dropout = attention_dropout
         self.mask_prob = mask_prob
+        self.student_temp = student_temp
+        self.teacher_cls_temp = teacher_cls_temp
+        self.teacher_patch_temp = teacher_patch_temp
+        self.momentum = momentum
+        self.center_momentum = center_momentum
         self.batch_size = batch_size
         self.effective_batch_size = effective_batch_size
         self.lr = lr

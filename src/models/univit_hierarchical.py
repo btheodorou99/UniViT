@@ -66,7 +66,7 @@ class EncoderBlock(nn.Module):
     def __init__(
         self,
         num_heads: int,
-        hidden_dim: int,
+        representation_size: int,
         mlp_dim: int,
         dropout: float,
         attention_dropout: float,
@@ -76,16 +76,16 @@ class EncoderBlock(nn.Module):
         self.num_heads = num_heads
 
         # Attention block
-        self.ln_1 = norm_layer(hidden_dim)
-        self.self_attention = nn.MultiheadAttention(hidden_dim, num_heads, dropout=attention_dropout, batch_first=True)
+        self.ln_1 = norm_layer(representation_size)
+        self.self_attention = nn.MultiheadAttention(representation_size, num_heads, dropout=attention_dropout, batch_first=True)
         self.dropout = nn.Dropout(dropout)
 
         # MLP block
-        self.ln_2 = norm_layer(hidden_dim)
-        self.mlp = MLPBlock(hidden_dim, mlp_dim, dropout)
+        self.ln_2 = norm_layer(representation_size)
+        self.mlp = MLPBlock(representation_size, mlp_dim, dropout)
 
     def forward(self, input: torch.Tensor, mask: Optional[torch.Tensor] = None):
-        torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, hidden_dim) got {input.shape}")
+        torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, representation_size) got {input.shape}")
         x = self.ln_1(input)
         x, _ = self.self_attention(x, x, x, key_padding_mask=mask, need_weights=False)
         x = self.dropout(x)
@@ -103,7 +103,7 @@ class Encoder(nn.Module):
         self,
         num_layers: int,
         num_heads: int,
-        hidden_dim: int,
+        representation_size: int,
         mlp_dim: int,
         dropout: float,
         attention_dropout: float,
@@ -117,18 +117,36 @@ class Encoder(nn.Module):
         for i in range(num_layers):
             layers[f"encoder_layer_{i}"] = EncoderBlock(
                 num_heads,
-                hidden_dim,
+                representation_size,
                 mlp_dim,
                 dropout,
                 attention_dropout,
                 norm_layer,
             )
         self.layers = MaskedSequential(layers.values())
-        self.ln = norm_layer(hidden_dim)
+        self.ln = norm_layer(representation_size)
 
     def forward(self, input: torch.Tensor, mask: Optional[torch.Tensor] = None):
-        torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, hidden_dim) got {input.shape}")
+        torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, representation_size) got {input.shape}")
         return self.ln(self.layers(self.dropout(input), mask))
+
+class ProjectionHead(nn.Module):
+    def __init__(self, in_dim, out_dim, nlayers=3, hidden_dim=2048, bottleneck_dim=256):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(in_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, bottleneck_dim),
+        )
+        self.last_layer = nn.Linear(bottleneck_dim, out_dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.net(x)
+        x = nn.normalize(x, p=2, dim=-1)
+        x = self.last_layer(x)
+        return x
 
 class UniViT(nn.Module):
     def __init__(
@@ -143,7 +161,7 @@ class UniViT(nn.Module):
         num_layers: int,
         num_secondary_layers: int,
         num_heads: int,
-        hidden_dim: int,
+        projection_size: int,
         mlp_dim: int,
         dropout: float = 0.0,
         attention_dropout: float = 0.0,
@@ -162,30 +180,31 @@ class UniViT(nn.Module):
         self.image_channels = num_channels
         self.patch_size = patch_size
         self.representation_size = representation_size
-        self.hidden_dim = hidden_dim
+        self.projection_size = projection_size
         self.mlp_dim = mlp_dim
         self.dropout = dropout
         self.attention_dropout = attention_dropout
         self.mask_prob = mask_prob
         self.norm_layer = norm_layer
         self.conv_proj = nn.Conv2d(
-            in_channels=self.image_channels, out_channels=hidden_dim, kernel_size=patch_size, stride=patch_size
+            in_channels=self.image_channels, out_channels=representation_size, kernel_size=patch_size, stride=patch_size
         )
+        self.masked_embed = nn.Parameter(torch.zeros(1, representation_size))
         
-        self.slice_embedding = nn.Embedding(self.image_slice, hidden_dim)
-        self.time_embedding = nn.Embedding(self.image_time, hidden_dim)
-        self.height_embedding = nn.Linear(1, hidden_dim)
-        self.width_embedding = nn.Linear(1, hidden_dim)
+        self.slice_embedding = nn.Embedding(self.image_slice, representation_size)
+        self.time_embedding = nn.Embedding(self.image_time, representation_size)
+        self.height_embedding = nn.Linear(1, representation_size)
+        self.width_embedding = nn.Linear(1, representation_size)
 
         # Add class tokens
-        self.image_class_token = nn.Parameter(torch.zeros(1, 1, hidden_dim))
-        self.slice_class_token = nn.Parameter(torch.zeros(1, 1, hidden_dim))
-        self.time_class_token = nn.Parameter(torch.zeros(1, 1, hidden_dim))
+        self.image_class_token = nn.Parameter(torch.zeros(1, 1, representation_size))
+        self.slice_class_token = nn.Parameter(torch.zeros(1, 1, representation_size))
+        self.time_class_token = nn.Parameter(torch.zeros(1, 1, representation_size))
 
         self.image_encoder = Encoder(
             num_layers,
             num_heads,
-            hidden_dim,
+            representation_size,
             mlp_dim,
             dropout,
             attention_dropout,
@@ -194,7 +213,7 @@ class UniViT(nn.Module):
         self.slice_encoder = Encoder(
             num_secondary_layers,
             num_heads,
-            hidden_dim,
+            representation_size,
             mlp_dim,
             dropout,
             attention_dropout,
@@ -203,7 +222,7 @@ class UniViT(nn.Module):
         self.time_encoder = Encoder(
             num_secondary_layers,
             num_heads,
-            hidden_dim,
+            representation_size,
             mlp_dim,
             dropout,
             attention_dropout,
@@ -216,13 +235,13 @@ class UniViT(nn.Module):
         if self.conv_proj.bias is not None:
             nn.init.zeros_(self.conv_proj.bias)
             
-        self.cls_head = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, representation_size))
-        self.embed_head = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, representation_size))
+        self.cls_head = ProjectionHead(representation_size, projection_size)
+        self.embed_head = ProjectionHead(representation_size, projection_size)
         self.swap_prob = 0.2
         if posTypeHead:
-            self.pos_head = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, 1))
+            self.pos_head = nn.Sequential(nn.Linear(representation_size, representation_size), nn.ReLU(), nn.Linear(representation_size, 1))
         elif posMaskHead:
-            self.pos_head = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, self.image_height + self.image_width + self.image_slice + self.image_time))
+            self.pos_head = nn.Sequential(nn.Linear(representation_size, representation_size), nn.ReLU(), nn.Linear(representation_size, self.image_height + self.image_width + self.image_slice + self.image_time))
 
     def _process_input(self, x: torch.Tensor) -> torch.Tensor:
         b, t, s, c, h, w = x.shape
@@ -233,12 +252,12 @@ class UniViT(nn.Module):
         torch._assert(h == self.image_height, f"Wrong image height! Expected {self.image_height} but got {h}!")
         torch._assert(w == self.image_width, f"Wrong image width! Expected {self.image_width} but got {w}!")
 
-        # (b, t, s, c, h, w) -> (b * t * s, hidden_dim, n_h * n_w)
+        # (b, t, s, c, h, w) -> (b * t * s, representation_size, n_h * n_w)
         x = x.reshape(b * t * s, c, h, w)
         x = self.conv_proj(x)
-        x = x.reshape(b * t * s, self.hidden_dim, -1)
+        x = x.reshape(b * t * s, self.representation_size, -1)
 
-        # (n, hidden_dim, (seq_len)) -> (n, (seq_len), hidden_dim)
+        # (n, representation_size, (seq_len)) -> (n, (seq_len), representation_size)
         x = x.permute(0, 2, 1)
 
         return x
@@ -267,17 +286,17 @@ class UniViT(nn.Module):
 
         slice_indices = torch.arange(self.image_slice, device=x.device)
         slice_emb = self.slice_embedding(slice_indices)
-        slice_emb = slice_emb.repeat(bs, self.image_time, 1, 1).view(-1, self.image_slice, self.hidden_dim)
+        slice_emb = slice_emb.repeat(bs, self.image_time, 1, 1).view(-1, self.image_slice, self.representation_size)
 
         h_positions = torch.arange(patch_height, device=x.device).repeat(bs, 1)
         h_positions = h_positions / (torch.ceil(dimensions[:,2] / self.patch_size).unsqueeze(1).to(x.device))
         h_emb = self.height_embedding(h_positions.unsqueeze(-1))
-        h_emb = h_emb.repeat(1, self.image_time, self.image_slice, 1, patch_width, 1).reshape(-1, patch_height * patch_width, self.hidden_dim)
+        h_emb = h_emb.repeat(1, self.image_time, self.image_slice, 1, patch_width, 1).reshape(-1, patch_height * patch_width, self.representation_size)
 
         w_positions = torch.arange(patch_width, device=x.device).repeat(bs, 1)
         w_positions = w_positions / (torch.ceil(dimensions[:,3] / self.patch_size).unsqueeze(1).to(x.device))
         w_emb = self.width_embedding(w_positions.unsqueeze(-1))
-        w_emb = w_emb.repeat(1, self.image_time, self.image_slice, patch_height, 1, 1).reshape(-1, patch_height * patch_width, self.hidden_dim)
+        w_emb = w_emb.repeat(1, self.image_time, self.image_slice, patch_height, 1, 1).reshape(-1, patch_height * patch_width, self.representation_size)
 
         image_emb = h_emb + w_emb
 
@@ -344,17 +363,17 @@ class UniViT(nn.Module):
 
         slice_indices = torch.arange(self.image_slice, device=x.device)
         slice_emb = self.slice_embedding(slice_indices)
-        slice_emb = slice_emb.repeat(bs, self.image_time, 1, 1).view(-1, self.image_slice, self.hidden_dim)
+        slice_emb = slice_emb.repeat(bs, self.image_time, 1, 1).view(-1, self.image_slice, self.representation_size)
 
         h_positions = torch.arange(patch_height, device=x.device).repeat(bs, 1)
         h_positions = h_positions / (torch.ceil(dimensions[:,2] / self.patch_size).unsqueeze(1).to(x.device))
         h_emb = self.height_embedding(h_positions.unsqueeze(-1))
-        h_emb = h_emb.repeat(1, self.image_time, self.image_slice, 1, patch_width, 1).reshape(-1, patch_height * patch_width, self.hidden_dim)
+        h_emb = h_emb.repeat(1, self.image_time, self.image_slice, 1, patch_width, 1).reshape(-1, patch_height * patch_width, self.representation_size)
 
         w_positions = torch.arange(patch_width, device=x.device).repeat(bs, 1)
         w_positions = w_positions / (torch.ceil(dimensions[:,3] / self.patch_size).unsqueeze(1).to(x.device))
         w_emb = self.width_embedding(w_positions.unsqueeze(-1))
-        w_emb = w_emb.repeat(1, self.image_time, self.image_slice, patch_height, 1, 1).reshape(-1, patch_height * patch_width, self.hidden_dim)
+        w_emb = w_emb.repeat(1, self.image_time, self.image_slice, patch_height, 1, 1).reshape(-1, patch_height * patch_width, self.representation_size)
 
         image_emb = h_emb + w_emb
         
@@ -367,72 +386,72 @@ class UniViT(nn.Module):
         
         return image_mask, slice_mask, time_mask, image_emb, slice_emb, time_emb, pos_image_mask, pos_slice_mask, pos_time_mask
     
-    def _mask_sequence(self, orig_image_mask: torch.Tensor, orig_slice_mask: torch.Tensor, orig_time_mask: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        image_mask = torch.rand_like(orig_image_mask, dtype=torch.float) < self.mask_prob
-        slice_mask = torch.rand_like(orig_slice_mask, dtype=torch.float) < self.mask_prob
-        time_mask = torch.rand_like(orig_time_mask, dtype=torch.float) < self.mask_prob
-            
-        image_mask = image_mask | orig_image_mask
-        slice_mask = slice_mask | orig_slice_mask
-        time_mask = time_mask | orig_time_mask
+    def _mask_sequence(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        bs = x.shape[0]
+        image_mask = torch.rand((bs * self.image_time * self.image_slice, (self.image_height // self.patch_size) * (self.image_width // self.patch_size)), dtype=torch.float, device=x.device) < self.mask_prob
+        slice_mask = torch.rand((bs * self.image_time, self.image_slice), dtype=torch.float, device=x.device) < self.mask_prob
+        time_mask = torch.rand((bs, self.image_time), dtype=torch.float, device=x.device) < self.mask_prob
         return image_mask, slice_mask, time_mask
     
     def forward(self, x: torch.Tensor, dimensions: torch.Tensor, seqMask: bool = False, posMask: bool = False, train: bool = False, posOutputs: bool = False):
         # Reshape and permute the input tensor
         bs = x.shape[0]
         x = self._process_input(x)
+        if seqMask:
+            image_mask, slice_mask, time_mask = self._mask_sequence(orig_image_mask, orig_slice_mask, orig_time_mask)
+        else:
+            image_mask = torch.zeros((bs * self.image_time * self.image_slice, (self.image_height // self.patch_size) * (self.image_width // self.patch_size)), dtype=torch.bool, device=x.device)
+            slice_mask = torch.zeros((bs * self.image_time, self.image_slice), dtype=torch.bool, device=x.device)
+            time_mask = torch.zeros((bs, self.image_time), dtype=torch.bool, device=x.device)
+            
         if posMask:
             orig_image_mask, orig_slice_mask, orig_time_mask, image_emb, slice_emb, time_emb, pos_image_mask, pos_slice_mask, pos_time_mask = self._prepare_sequence_posMask(x, dimensions)
         else:
             orig_image_mask, orig_slice_mask, orig_time_mask, image_emb, slice_emb, time_emb = self._prepare_sequence(x, dimensions)
-        if seqMask:
-            image_mask, slice_mask, time_mask = self._mask_sequence(orig_image_mask, orig_slice_mask, orig_time_mask)
-        else:
-            image_mask = orig_image_mask
-            slice_mask = orig_slice_mask
-            time_mask = orig_time_mask
 
         # Encode the image level
         n = x.shape[0]
-        x = x + image_emb
+        
+        x = ((image_mask.float() * self.masked_embed) + ((~image_mask).float() * x)) + image_emb
         batch_image_class_token = self.image_class_token.expand(n, -1, -1)
         batch_image_class_mask = torch.zeros(n, 1).bool().to(x.device)
         x = torch.cat([batch_image_class_token, x], dim=1)
-        image_mask = torch.cat([batch_image_class_mask, image_mask], dim=1)
-        image_output = self.image_encoder(x, image_mask)
+        encoder_image_mask = torch.cat([batch_image_class_mask, orig_image_mask], dim=1)
+        image_output = self.image_encoder(x, encoder_image_mask)
         image_cls = image_output[:, 0]
-        x = image_cls.view(-1, self.image_slice, self.hidden_dim)
+        x = image_cls.view(-1, self.image_slice, self.representation_size)
 
         # Encode the slice level
         n = x.shape[0]
-        x = x + slice_emb
+        x = ((slice_mask.float() * self.masked_embed) + ((~slice_mask).float() * x)) + slice_emb
         batch_slice_class_token = self.slice_class_token.expand(n, -1, -1)
         batch_slice_class_mask = torch.zeros(n, 1).bool().to(x.device)
         x = torch.cat([batch_slice_class_token, x], dim=1)
-        slice_mask = torch.cat([batch_slice_class_mask, slice_mask], dim=1)
-        slice_output = self.slice_encoder(x, slice_mask)
+        encoder_slice_mask = torch.cat([batch_slice_class_mask, orig_slice_mask], dim=1)
+        slice_output = self.slice_encoder(x, encoder_slice_mask)
         slice_cls = slice_output[:, 0]
-        x = slice_cls.view(-1, self.image_time, self.hidden_dim)
+        x = slice_cls.view(-1, self.image_time, self.representation_size)
         
         # Encode the time level
         n = x.shape[0]
-        x = x + time_emb
+        x = ((time_mask.float() * self.masked_embed) + ((~time_mask).float() * x)) + time_emb
         batch_time_class_token = self.time_class_token.expand(n, -1, -1)
         batch_time_class_mask = torch.zeros(n, 1).bool().to(x.device)
         x = torch.cat([batch_time_class_token, x], dim=1)
-        time_mask = torch.cat([batch_time_class_mask, time_mask], dim=1)
-        time_output = self.time_encoder(x, time_mask)
+        encoder_time_mask = torch.cat([batch_time_class_mask, orig_time_mask], dim=1)
+        time_output = self.time_encoder(x, encoder_time_mask)
         time_cls = time_output[:, 0]
         
         if train:
-            image_output = image_output[:, 1:].reshape(bs, -1, self.hidden_dim)
-            image_mask = image_mask[:, 1:].reshape(bs, -1)
-            slice_output = slice_output[:, 1:].reshape(bs, -1, self.hidden_dim)
+            cls = time_cls
+            image_output = image_output[:, 1:].reshape(bs, -1, self.representation_size)
+            image_mask = image_mask.reshape(bs, -1)
+            slice_output = slice_output[:, 1:].reshape(bs, -1, self.representation_size)
             orig_image_mask = orig_image_mask.reshape(bs, -1)
-            slice_mask = slice_mask[:, 1:].reshape(bs, -1)
-            time_output = time_output[:, 1:].reshape(bs, -1, self.hidden_dim)
+            slice_mask = slice_mask.reshape(bs, -1)
+            time_output = time_output[:, 1:].reshape(bs, -1, self.representation_size)
             orig_slice_mask = orig_slice_mask.reshape(bs, -1)
-            time_mask = time_mask[:, 1:].reshape(bs, -1)
+            time_mask = time_mask.reshape(bs, -1)
             output = torch.cat([image_output, slice_output, time_output], dim=1)
             orig_time_mask = orig_time_mask.reshape(bs, -1)
             mask = torch.cat([image_mask, slice_mask, time_mask], dim=1)
@@ -443,11 +462,11 @@ class UniViT(nn.Module):
                     pos_slice_mask = pos_slice_mask.reshape(bs, -1)
                     pos_time_mask = pos_time_mask.reshape(bs, -1)
                     pos_mask = torch.cat([pos_image_mask, pos_slice_mask, pos_time_mask], dim=1)
-                    return self.embed_head(output), self.pos_head(output), mask, orig_mask, pos_mask
+                    return self.cls_head(cls), self.embed_head(output), self.pos_head(output), mask, orig_mask, pos_mask
                 
-                return self.embed_head(output), self.pos_head(output), mask, orig_mask
+                return self.cls_head(cls), self.embed_head(output), self.pos_head(output), mask, orig_mask
             
-            return self.embed_head(output), mask, orig_mask
+            return self.cls_head(cls), self.embed_head(output), mask, orig_mask
         
         return x
     
@@ -467,7 +486,7 @@ class UniViT(nn.Module):
         image_mask = torch.cat([batch_image_class_mask, image_mask], dim=1)
         image_output = self.image_encoder(x, image_mask)
         image_cls = image_output[:, 0]
-        x = image_cls.view(-1, self.image_slice, self.hidden_dim)
+        x = image_cls.view(-1, self.image_slice, self.representation_size)
 
         # Encode the slice level
         n = x.shape[0]
@@ -478,7 +497,7 @@ class UniViT(nn.Module):
         slice_mask = torch.cat([batch_slice_class_mask, slice_mask], dim=1)
         slice_output = self.slice_encoder(x, slice_mask)
         slice_cls = slice_output[:, 0]
-        x = slice_cls.view(-1, self.image_time, self.hidden_dim)
+        x = slice_cls.view(-1, self.image_time, self.representation_size)
         
         # Encode the time level
         n = x.shape[0]

@@ -66,7 +66,7 @@ class EncoderBlock(nn.Module):
     def __init__(
         self,
         num_heads: int,
-        hidden_dim: int,
+        representation_size: int,
         mlp_dim: int,
         dropout: float,
         attention_dropout: float,
@@ -76,16 +76,16 @@ class EncoderBlock(nn.Module):
         self.num_heads = num_heads
 
         # Attention block
-        self.ln_1 = norm_layer(hidden_dim)
-        self.self_attention = nn.MultiheadAttention(hidden_dim, num_heads, dropout=attention_dropout, batch_first=True)
+        self.ln_1 = norm_layer(representation_size)
+        self.self_attention = nn.MultiheadAttention(representation_size, num_heads, dropout=attention_dropout, batch_first=True)
         self.dropout = nn.Dropout(dropout)
 
         # MLP block
-        self.ln_2 = norm_layer(hidden_dim)
-        self.mlp = MLPBlock(hidden_dim, mlp_dim, dropout)
+        self.ln_2 = norm_layer(representation_size)
+        self.mlp = MLPBlock(representation_size, mlp_dim, dropout)
 
     def forward(self, input: torch.Tensor, mask: Optional[torch.Tensor] = None):
-        torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, hidden_dim) got {input.shape}")
+        torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, representation_size) got {input.shape}")
         x = self.ln_1(input)
         x, _ = self.self_attention(x, x, x, key_padding_mask=mask, need_weights=False)
         x = self.dropout(x)
@@ -103,7 +103,7 @@ class Encoder(nn.Module):
         self,
         num_layers: int,
         num_heads: int,
-        hidden_dim: int,
+        representation_size: int,
         mlp_dim: int,
         dropout: float,
         attention_dropout: float,
@@ -117,18 +117,36 @@ class Encoder(nn.Module):
         for i in range(num_layers):
             layers[f"encoder_layer_{i}"] = EncoderBlock(
                 num_heads,
-                hidden_dim,
+                representation_size,
                 mlp_dim,
                 dropout,
                 attention_dropout,
                 norm_layer,
             )
         self.layers = MaskedSequential(layers.values())
-        self.ln = norm_layer(hidden_dim)
+        self.ln = norm_layer(representation_size)
 
     def forward(self, input: torch.Tensor, mask: Optional[torch.Tensor] = None):
-        torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, hidden_dim) got {input.shape}")
+        torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, representation_size) got {input.shape}")
         return self.ln(self.layers(self.dropout(input), mask))
+
+class ProjectionHead(nn.Module):
+    def __init__(self, in_dim, out_dim, nlayers=3, hidden_dim=2048, bottleneck_dim=256):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(in_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, bottleneck_dim),
+        )
+        self.last_layer = nn.Linear(bottleneck_dim, out_dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.net(x)
+        x = nn.normalize(x, p=2, dim=-1)
+        x = self.last_layer(x)
+        return x
 
 class UniViT(nn.Module):
     def __init__(
@@ -142,7 +160,7 @@ class UniViT(nn.Module):
         representation_size: int,
         num_layers: int,
         num_heads: int,
-        hidden_dim: int,
+        projection_size: int,
         mlp_dim: int,
         dropout: float = 0.0,
         attention_dropout: float = 0.0,
@@ -161,31 +179,32 @@ class UniViT(nn.Module):
         self.image_channels = num_channels
         self.patch_size = patch_size
         self.representation_size = representation_size
-        self.hidden_dim = hidden_dim
+        self.projection_size = projection_size
         self.mlp_dim = mlp_dim
         self.dropout = dropout
         self.attention_dropout = attention_dropout
         self.mask_prob = mask_prob
         self.norm_layer = norm_layer
         self.conv_proj = nn.Conv2d(
-            in_channels=self.image_channels, out_channels=hidden_dim, kernel_size=patch_size, stride=patch_size
+            in_channels=self.image_channels, out_channels=representation_size, kernel_size=patch_size, stride=patch_size
         )
+        self.masked_embed = nn.Parameter(torch.zeros(1, representation_size))
         
-        self.slice_embedding = nn.Embedding(self.image_slice, hidden_dim)
-        self.time_embedding = nn.Embedding(self.image_time, hidden_dim)
-        self.height_embedding = nn.Linear(1, hidden_dim)
-        self.width_embedding = nn.Linear(1, hidden_dim)
+        self.slice_embedding = nn.Embedding(self.image_slice, representation_size)
+        self.time_embedding = nn.Embedding(self.image_time, representation_size)
+        self.height_embedding = nn.Linear(1, representation_size)
+        self.width_embedding = nn.Linear(1, representation_size)
 
         seq_length = (self.image_height // patch_size) * (self.image_width // patch_size) * self.image_slice * self.image_time
 
         # Add a class token
-        self.class_token = nn.Parameter(torch.zeros(1, 1, hidden_dim))
+        self.class_token = nn.Parameter(torch.zeros(1, 1, representation_size))
         seq_length += 1
 
         self.encoder = Encoder(
             num_layers,
             num_heads,
-            hidden_dim,
+            representation_size,
             mlp_dim,
             dropout,
             attention_dropout,
@@ -199,13 +218,13 @@ class UniViT(nn.Module):
         if self.conv_proj.bias is not None:
             nn.init.zeros_(self.conv_proj.bias)
             
-        self.cls_head = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, representation_size))
-        self.embed_head = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, representation_size))
+        self.cls_head = ProjectionHead(representation_size, projection_size)
+        self.embed_head = ProjectionHead(representation_size, projection_size)
         self.swap_prob = 0.2
         if posTypeHead:
-            self.pos_head = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, 1))
+            self.pos_head = nn.Sequential(nn.Linear(representation_size, representation_size), nn.ReLU(), nn.Linear(representation_size, 1))
         elif posMaskHead:
-            self.pos_head = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, self.image_height + self.image_width + self.image_slice + self.image_time))
+            self.pos_head = nn.Sequential(nn.Linear(representation_size, representation_size), nn.ReLU(), nn.Linear(representation_size, self.image_height + self.image_width + self.image_slice + self.image_time))
 
     def _process_input(self, x: torch.Tensor) -> torch.Tensor:
         b, t, s, c, h, w = x.shape
@@ -218,12 +237,12 @@ class UniViT(nn.Module):
         n_h = h // p
         n_w = w // p
 
-        # (b, t, s, c, h, w) -> (b, hidden_dim, t * s * n_h * n_w)
+        # (b, t, s, c, h, w) -> (b, representation_size, t * s * n_h * n_w)
         x = x.reshape(b * t * s, c, h, w)
         x = self.conv_proj(x)
-        x = x.view(b, t, s, self.hidden_dim, n_h, n_w).permute(0, 3, 1, 2, 4, 5).reshape(b, self.hidden_dim, t * s * n_h * n_w)
+        x = x.view(b, t, s, self.representation_size, n_h, n_w).permute(0, 3, 1, 2, 4, 5).reshape(b, self.representation_size, t * s * n_h * n_w)
 
-        # (n, hidden_dim, (seq_len)) -> (n, (seq_len), hidden_dim)
+        # (n, representation_size, (seq_len)) -> (n, (seq_len), representation_size)
         # The self attention layer expects inputs in the format (N, S, E)
         # where S is the source sequence length, N is the batch size, E is the
         # embedding dimension
@@ -331,20 +350,19 @@ class UniViT(nn.Module):
         x = x + pos_emb
         return x, mask, pos_mask
     
-    def _mask_sequence(self, orig_mask: torch.Tensor, patchMask: bool = False) -> torch.Tensor:
+    def _mask_sequence(self, x: torch.Tensor, dim: torch.Tensor, patchMask: bool = False) -> torch.Tensor:
+        bs = x.shape[0]
         if patchMask:
-            bs = orig_mask.shape[0]
-            reshape_mask = orig_mask.reshape(bs, self.image_time, self.image_slice, self.image_height // self.patch_size, self.image_width // self.patch_size)
-            mask = torch.zeros_like(reshape_mask, dtype=torch.bool)
+            mask = torch.zeros((bs, self.image_time, self.image_slice, patch_height, patch_width), dtype=torch.bool, device=x.device)
             max_time_patch = self.image_time // 2
             max_slice_patch = self.image_slice // 10
             max_height_patch = (self.image_height / self.patch_size) // 2
             max_width_patch = (self.image_width / self.patch_size) // 2
             for b in range(bs):
-                max_time = reshape_mask[b].sum(0).max().item()
-                max_slice = reshape_mask[b].sum(1).max().item()
-                max_height = reshape_mask[b].sum(2).max().item()
-                max_width = reshape_mask[b].sum(3).max().item()
+                max_time = (dim[b][0]).item()
+                max_slice = (dim[b][1]).item()
+                max_height = (dim[b][2] // self.patch_size).item()
+                max_width = (dim[b][3] // self.patch_size).item()
                 
                 corner_time = torch.randint(0, max_time, (1,)).item()
                 corner_slice = torch.randint(0, max_slice, (1,)).item()
@@ -375,43 +393,43 @@ class UniViT(nn.Module):
             
             mask = mask.reshape(bs, -1)
         else:
-            mask = torch.rand_like(orig_mask, dtype=torch.float) < self.mask_prob
+            mask = torch.rand((bs, self.seq_length), dtype=torch.float, device=x.device) < self.mask_prob
             
-        mask = mask | orig_mask
         return mask
     
     def forward(self, x: torch.Tensor, dimensions: torch.Tensor, seqMask: bool = False, posMask: bool = False, train: bool = False, posOutputs: bool = False, patchMask: bool = False):
         # Reshape and permute the input tensor
         x = self._process_input(x)
         n = x.shape[0]
+        if seqMask:
+            mask = self._mask_sequence(x, dimensions, patchMask)
+        else:
+            mask = torch.zeros((n, self.seq_length), dtype=torch.bool, device=x.device)
+            
+        x = (mask.float() * self.masked_embed) + ((~mask).float() * x)
         
         if posMask:
             x, orig_mask, pos_mask = self._prepare_sequence_posMask(x, dimensions)
         else:
             x, orig_mask = self._prepare_sequence(x, dimensions)
-        if seqMask:
-            mask = self._mask_sequence(orig_mask, patchMask)
-        else:
-            mask = orig_mask
-
+        
         # Expand the class token to the full batch
         batch_class_token = self.class_token.expand(n, -1, -1)
         batch_class_mask = torch.zeros(n, 1).bool().to(x.device)
         x = torch.cat([batch_class_token, x], dim=1)
-        mask = torch.cat([batch_class_mask, mask], dim=1)
+        encoder_mask = torch.cat([batch_class_mask, orig_mask], dim=1)
 
-        x = self.encoder(x, mask)
+        x = self.encoder(x, encoder_mask)
         
         if train:
-            x = x[:, 1:]
-            mask = mask[:, 1:]
+            cls, x = x[:, 0], x[:, 1:]
             if posOutputs:
                 if posMask:
-                    return self.embed_head(x), self.pos_head(x), mask, orig_mask, pos_mask
+                    return self.cls_head(cls), self.embed_head(x), self.pos_head(x), mask, orig_mask, pos_mask
                 
-                return self.embed_head(x), self.pos_head(x), mask, orig_mask
+                return self.cls_head(cls), self.embed_head(x), self.pos_head(x), mask, orig_mask
             
-            return self.embed_head(x), mask, orig_mask
+            return self.cls_head(cls), self.embed_head(x), mask, orig_mask
         
         return x
     
@@ -419,17 +437,18 @@ class UniViT(nn.Module):
         # Reshape and permute the input tensor
         x = self._process_input(x)
         n = x.shape[0]
+        if patchMask:
+            mask = self._mask_sequence(x, dimensions, patchMask)
+            x = (mask.float() * self.masked_embed) + ((~mask).float() * x)
         
         x, mask = self._prepare_sequence(x, dimensions, swapPos, adversarialPos, adversarialPatch)
-        if patchMask:
-            mask = self._mask_sequence(mask, patchMask)
 
         # Expand the class token to the full batch
         batch_class_token = self.class_token.expand(n, -1, -1)
         batch_class_mask = torch.zeros(n, 1).bool().to(x.device)
         x = torch.cat([batch_class_token, x], dim=1)
-        mask = torch.cat([batch_class_mask, mask], dim=1)
-        x = self.encoder(x, mask)
+        encoder_mask = torch.cat([batch_class_mask, mask], dim=1)
+        x = self.encoder(x, encoder_mask)
         cls = x[:, 0]
         
         if train:

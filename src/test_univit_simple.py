@@ -42,7 +42,7 @@ model = UniViT(config.max_height,
                config.representation_size, 
                config.num_layers, 
                config.num_heads, 
-               config.hidden_dim, 
+               config.projection_size, 
                config.mlp_dim, 
                config.dropout, 
                config.attention_dropout,
@@ -81,7 +81,7 @@ for task in tune_data:
     else:
         raise ValueError('Invalid task type')
     
-    downstream = DownstreamModel(config.hidden_dim, label_size).to(device)
+    downstream = DownstreamModel(config.representation_size, label_size).to(device)
     optimizer = torch.optim.Adam(downstream.parameters(), lr=config.downstream_lr)
     for epoch in tqdm(range(config.downstream_epochs), leave=False, desc=f'{task} Tuning'):
         batches_since_step = 0
