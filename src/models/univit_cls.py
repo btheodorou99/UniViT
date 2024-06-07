@@ -1,6 +1,7 @@
 import math
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from ..ops.misc import MLP
 from functools import partial
 from collections import OrderedDict
@@ -144,7 +145,7 @@ class ProjectionHead(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.net(x)
-        x = nn.normalize(x, p=2, dim=-1)
+        x = F.normalize(x, p=2, dim=-1)
         x = self.last_layer(x)
         return x
 
@@ -187,7 +188,7 @@ class UniViT(nn.Module):
         self.conv_proj = nn.Conv2d(
             in_channels=self.image_channels, out_channels=representation_size, kernel_size=patch_size, stride=patch_size
         )
-        self.masked_embed = nn.Parameter(torch.zeros(1, representation_size))
+        self.masked_embed = nn.Parameter(torch.zeros(1, 1, representation_size))
         
         self.slice_embedding = nn.Embedding(self.image_slice, representation_size)
         self.time_embedding = nn.Embedding(self.image_time, representation_size)

@@ -1,6 +1,7 @@
 import math
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torchvision.ops import MLP
 from functools import partial
 from collections import OrderedDict
@@ -144,7 +145,7 @@ class ProjectionHead(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.net(x)
-        x = nn.normalize(x, p=2, dim=-1)
+        x = F.normalize(x, p=2, dim=-1)
         x = self.last_layer(x)
         return x
 
@@ -189,7 +190,7 @@ class UniViT(nn.Module):
         self.conv_proj = nn.Conv2d(
             in_channels=self.image_channels, out_channels=representation_size, kernel_size=patch_size, stride=patch_size
         )
-        self.masked_embed = nn.Parameter(torch.zeros(1, representation_size))
+        self.masked_embed = nn.Parameter(torch.zeros(1, 1, representation_size))
         
         self.slice_embedding = nn.Embedding(self.image_slice, representation_size)
         self.time_embedding = nn.Embedding(self.image_time, representation_size)
@@ -386,8 +387,7 @@ class UniViT(nn.Module):
         
         return image_mask, slice_mask, time_mask, image_emb, slice_emb, time_emb, pos_image_mask, pos_slice_mask, pos_time_mask
     
-    def _mask_sequence(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        bs = x.shape[0]
+    def _mask_sequence(self, x: torch.Tensor, bs: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         image_mask = torch.rand((bs * self.image_time * self.image_slice, (self.image_height // self.patch_size) * (self.image_width // self.patch_size)), dtype=torch.float, device=x.device) < self.mask_prob
         slice_mask = torch.rand((bs * self.image_time, self.image_slice), dtype=torch.float, device=x.device) < self.mask_prob
         time_mask = torch.rand((bs, self.image_time), dtype=torch.float, device=x.device) < self.mask_prob
@@ -398,7 +398,7 @@ class UniViT(nn.Module):
         bs = x.shape[0]
         x = self._process_input(x)
         if seqMask:
-            image_mask, slice_mask, time_mask = self._mask_sequence(orig_image_mask, orig_slice_mask, orig_time_mask)
+            image_mask, slice_mask, time_mask = self._mask_sequence(x, bs)
         else:
             image_mask = torch.zeros((bs * self.image_time * self.image_slice, (self.image_height // self.patch_size) * (self.image_width // self.patch_size)), dtype=torch.bool, device=x.device)
             slice_mask = torch.zeros((bs * self.image_time, self.image_slice), dtype=torch.bool, device=x.device)
@@ -412,7 +412,7 @@ class UniViT(nn.Module):
         # Encode the image level
         n = x.shape[0]
         
-        x = ((image_mask.float() * self.masked_embed) + ((~image_mask).float() * x)) + image_emb
+        x = ((image_mask.float().unsqueeze(-1) * self.masked_embed) + ((~image_mask.unsqueeze(-1)).float() * x)) + image_emb
         batch_image_class_token = self.image_class_token.expand(n, -1, -1)
         batch_image_class_mask = torch.zeros(n, 1).bool().to(x.device)
         x = torch.cat([batch_image_class_token, x], dim=1)
@@ -423,7 +423,7 @@ class UniViT(nn.Module):
 
         # Encode the slice level
         n = x.shape[0]
-        x = ((slice_mask.float() * self.masked_embed) + ((~slice_mask).float() * x)) + slice_emb
+        x = ((slice_mask.float().unsqueeze(-1) * self.masked_embed) + ((~slice_mask.unsqueeze(-1)).float() * x)) + slice_emb
         batch_slice_class_token = self.slice_class_token.expand(n, -1, -1)
         batch_slice_class_mask = torch.zeros(n, 1).bool().to(x.device)
         x = torch.cat([batch_slice_class_token, x], dim=1)
@@ -434,7 +434,7 @@ class UniViT(nn.Module):
         
         # Encode the time level
         n = x.shape[0]
-        x = ((time_mask.float() * self.masked_embed) + ((~time_mask).float() * x)) + time_emb
+        x = ((time_mask.float().unsqueeze(-1) * self.masked_embed) + ((~time_mask.unsqueeze(-1)).float() * x)) + time_emb
         batch_time_class_token = self.time_class_token.expand(n, -1, -1)
         batch_time_class_mask = torch.zeros(n, 1).bool().to(x.device)
         x = torch.cat([batch_time_class_token, x], dim=1)

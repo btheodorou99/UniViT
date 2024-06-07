@@ -1,6 +1,7 @@
 import math
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torchvision.ops import MLP
 from functools import partial
 from collections import OrderedDict
@@ -144,7 +145,7 @@ class ProjectionHead(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.net(x)
-        x = nn.normalize(x, p=2, dim=-1)
+        x = F.normalize(x, p=2, dim=-1)
         x = self.last_layer(x)
         return x
 
@@ -188,7 +189,7 @@ class UniViT(nn.Module):
         self.conv_proj = nn.Conv2d(
             in_channels=self.image_channels, out_channels=representation_size, kernel_size=patch_size, stride=patch_size
         )
-        self.masked_embed = nn.Parameter(torch.zeros(1, representation_size))
+        self.masked_embed = nn.Parameter(torch.zeros(1, 1, representation_size))
         
         self.slice_embedding = nn.Embedding(self.image_slice, representation_size)
         self.time_embedding = nn.Embedding(self.image_time, representation_size)
@@ -351,7 +352,7 @@ class UniViT(nn.Module):
         return x, mask, pos_mask
     
     def _mask_sequence(self, x: torch.Tensor, dim: torch.Tensor, patchMask: bool = False) -> torch.Tensor:
-        bs = x.shape[0]
+        bs, seq_len, _ = x.shape
         if patchMask:
             mask = torch.zeros((bs, self.image_time, self.image_slice, patch_height, patch_width), dtype=torch.bool, device=x.device)
             max_time_patch = self.image_time // 2
@@ -393,20 +394,20 @@ class UniViT(nn.Module):
             
             mask = mask.reshape(bs, -1)
         else:
-            mask = torch.rand((bs, self.seq_length), dtype=torch.float, device=x.device) < self.mask_prob
+            mask = torch.rand((bs, seq_len), dtype=torch.float, device=x.device) < self.mask_prob
             
         return mask
     
     def forward(self, x: torch.Tensor, dimensions: torch.Tensor, seqMask: bool = False, posMask: bool = False, train: bool = False, posOutputs: bool = False, patchMask: bool = False):
         # Reshape and permute the input tensor
         x = self._process_input(x)
-        n = x.shape[0]
+        bs, seq_len, _ = x.shape
         if seqMask:
             mask = self._mask_sequence(x, dimensions, patchMask)
         else:
-            mask = torch.zeros((n, self.seq_length), dtype=torch.bool, device=x.device)
+            mask = torch.zeros((bs, seq_len), dtype=torch.bool, device=x.device)
             
-        x = (mask.float() * self.masked_embed) + ((~mask).float() * x)
+        x = (mask.float().unsqueeze(-1) * self.masked_embed) + ((~mask.unsqueeze(-1)).float() * x)
         
         if posMask:
             x, orig_mask, pos_mask = self._prepare_sequence_posMask(x, dimensions)
@@ -414,8 +415,8 @@ class UniViT(nn.Module):
             x, orig_mask = self._prepare_sequence(x, dimensions)
         
         # Expand the class token to the full batch
-        batch_class_token = self.class_token.expand(n, -1, -1)
-        batch_class_mask = torch.zeros(n, 1).bool().to(x.device)
+        batch_class_token = self.class_token.expand(bs, -1, -1)
+        batch_class_mask = torch.zeros(bs, 1).bool().to(x.device)
         x = torch.cat([batch_class_token, x], dim=1)
         encoder_mask = torch.cat([batch_class_mask, orig_mask], dim=1)
 
@@ -436,7 +437,7 @@ class UniViT(nn.Module):
     def embed(self, x: torch.Tensor, dimensions: torch.Tensor, train: bool = False, swapPos: bool = False, adversarialPos = None, adversarialPatch=None, patchMask: bool = False):
         # Reshape and permute the input tensor
         x = self._process_input(x)
-        n = x.shape[0]
+        bs = x.shape[0]
         if patchMask:
             mask = self._mask_sequence(x, dimensions, patchMask)
             x = (mask.float() * self.masked_embed) + ((~mask).float() * x)
@@ -444,8 +445,8 @@ class UniViT(nn.Module):
         x, mask = self._prepare_sequence(x, dimensions, swapPos, adversarialPos, adversarialPatch)
 
         # Expand the class token to the full batch
-        batch_class_token = self.class_token.expand(n, -1, -1)
-        batch_class_mask = torch.zeros(n, 1).bool().to(x.device)
+        batch_class_token = self.class_token.expand(bs, -1, -1)
+        batch_class_mask = torch.zeros(bs, 1).bool().to(x.device)
         x = torch.cat([batch_class_token, x], dim=1)
         encoder_mask = torch.cat([batch_class_mask, mask], dim=1)
         x = self.encoder(x, encoder_mask)
