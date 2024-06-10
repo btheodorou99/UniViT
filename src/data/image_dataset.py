@@ -91,8 +91,8 @@ class ImageDataset(Dataset):
         min_scale = max(MIN_RESOLUTION / dim[2], MIN_RESOLUTION / dim[3])
         max_scale = min(self.config.max_height / dim[2], self.config.max_width / dim[3])
         scale = random.uniform(min_scale, max_scale)
-        height = int(dim[2] * scale)
-        width = int(dim[3] * scale)
+        height = min(max(int(dim[2] * scale), MIN_RESOLUTION), self.config.max_height)
+        width = min(max(int(dim[3] * scale), MIN_RESOLUTION), self.config.max_width)
         img[:, :, :, :height, :width] = F.interpolate(img[:, :, :, :dim[2], :dim[3]].view(-1, self.config.num_channels, dim[2], dim[3]), size=(height, width), mode='bilinear', align_corners=False).view(img.shape[0], img.shape[1], self.config.num_channels, height, width)
         img[:, :, :, height:, :] = 0
         img[:, :, :, :, width:] = 0
