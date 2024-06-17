@@ -1,0 +1,24 @@
+EVALUATION:
+* Basic Image Classification (Downstream Model Tuning Single Image Representation)
+* 3D Evaluation (Downstream ADNI Classification Showing Value of 3D Handling)
+  - Our Model
+  - 2D (Temporal) Version of Our Model
+  - 2D (Non-Temporal) Version of Our Model
+  - Pretrained Models on Middle Slices
+* Temporal Evaluation (ADNI Dataset New Label and Others w/ At Least 3 Images Next Label)
+  - Our Model
+  - Non-Temporal Version of Our Model
+  - Pretrained Models on Most Recent Image
+* Embedding Retrieval Task
+* Qualitative Embedding Visualization
+  - 3D Patterns
+  - Temporal Patterns
+* Figure Our Resolution
+  - Do We Need Multi-Resolution (Nice Part of Flexibility Story, Also Adds Challenge to Model)
+  - How Do We Evaluate?
+
+
+MODELS:
+* 2D Version of Our Model
+* 2D Non-Temporal Version of Our Model
+* 3D Non-Temporal Version of Our Model

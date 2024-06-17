@@ -6,8 +6,6 @@ import torch.nn.functional as F
 from torchvision import transforms
 from torch.utils.data import Dataset
 
-MIN_CROP = 0.8
-
 class ImageDataset(Dataset):
     def __init__(self, dataset, config, device, patch_size=None, processing_fn=None, image_size=None, augment=False, downstream=False, multiclass=False):
         assert patch_size is not None or processing_fn is not None, 'Either patch_size or processing_fn must be provided'
@@ -35,11 +33,23 @@ class ImageDataset(Dataset):
         return len(self.dataset)
       
     def load_image(self, image_path):
-        img = Image.open(image_path).convert('RGB')
-        img = self.transform(img)
+        if image_path.endswith('.npy'):
+            img = torch.tensor(np.load(image_path), dtype=torch.float)
+            if len(img.shape) == 4:
+                img = img[:,:,:,0]
+            img = img[:,:,img.shape[2] // 2] # Take middle slice for 3D images
+            img = img.unsqueeze(0).repeat(3, 1, 1) # Repeat for 3 channels
+            if self.image_size is not None:
+                img = F.interpolate(img.unsqueeze(0), size=(self.image_size, self.image_size), mode='bilinear', align_corners=False).squeeze(0)
+        elif image_path.endswith('.jpg'):
+            img = Image.open(image_path).convert('RGB')
+            img = self.transform(img)
+        else: 
+            raise ValueError('Invalid image format')
+
         if self.patch_size is not None and img.shape[1] // self.patch_size != 0:
             img = F.interpolate(img.unsqueeze(0), size=(img.shape[1] // self.patch_size * self.patch_size, img.shape[2] // self.patch_size * self.patch_size), mode='bilinear', align_corners=False).squeeze(0)
-
+            
         return img
     
     def augment(self, img):

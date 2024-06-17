@@ -20,17 +20,13 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 6
+cuda_num = 0
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
   torch.cuda.manual_seed_all(SEED)
 
-config.downstream_batch_size = config.downstream_effective_batch_size
-batches_per_step = config.downstream_effective_batch_size // config.downstream_batch_size
 data_dir = '/shared/bpt3/data/UniViT/data'
 save_dir = '/shared/bpt3/data/UniViT/save'
-
-flat_tasks = ['Chest X-Ray (MIMIC)', 'Chest X-Ray (CheXpert)', 'Skin Lesion']
 tune_data = pickle.load(open(f'{data_dir}/tuningDataset.pkl', 'rb'))
 tune_data = {task: [p for p in tune_data[task] if p[4] is not None] for task in tune_data}
 test_data = pickle.load(open(f'{data_dir}/testingDataset.pkl', 'rb'))
@@ -43,10 +39,10 @@ model.requires_grad_(False)
 model.to(device)
 
 allResults = {}
-for task in flat_tasks:
+for task in tune_data:
     print(f'\n\nDownstream Evaluation on {task}')
     task_tune = tune_data[task]
-    label =  task_tune[0][4]
+    label = task_tune[0][4]
     if isinstance(label, list):
         label_size = len(label)
         multiclass = False
@@ -84,13 +80,9 @@ for task in flat_tasks:
             predictions = downstream(representations)
             predictions = train_activation(predictions)
             loss = loss_fn(predictions, batch_labels)
-            loss = loss / batches_per_step
             loss.backward()
-            batches_since_step += 1
-            if batches_since_step == batches_per_step:
-                optimizer.step()
-                optimizer.zero_grad()
-                batches_since_step = 0
+            optimizer.step()
+            optimizer.zero_grad()
 
     task_preds = []
     task_labels = []

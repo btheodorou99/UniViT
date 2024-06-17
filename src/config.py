@@ -33,7 +33,7 @@ class Config(object):
             effective_batch_size=64,
             lr=5e-4,
             lr_rampup=5000,
-            tot_steps=100000,
+            tot_steps=500000,
             num_workers=8,
             
             downstream_epochs=5,

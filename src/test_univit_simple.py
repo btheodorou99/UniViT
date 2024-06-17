@@ -19,12 +19,11 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 2
+cuda_num = 0
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
   torch.cuda.manual_seed_all(SEED)
 
-batches_per_step = config.downstream_effective_batch_size // config.downstream_batch_size
 data_dir = '/shared/bpt3/data/UniViT/data'
 save_dir = '/shared/bpt3/data/UniViT/save'
 tune_data = pickle.load(open(f'{data_dir}/tuningDataset.pkl', 'rb'))
@@ -93,13 +92,9 @@ for task in tune_data:
             predictions = downstream(representations)
             predictions = train_activation(predictions)
             loss = loss_fn(predictions, batch_labels)
-            loss = loss / batches_per_step
             loss.backward()
-            batches_since_step += 1
-            if batches_since_step == batches_per_step:
-                optimizer.step()
-                optimizer.zero_grad()
-                batches_since_step = 0
+            optimizer.step()
+            optimizer.zero_grad()
 
     task_preds = []
     task_labels = []
