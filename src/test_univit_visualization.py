@@ -76,6 +76,8 @@ for batch_images, batch_dimensions in tqdm(visualization_loader, desc=f'Generati
 
 tsne = TSNE(n_components=2, perplexity=30, n_iter=300)
 reduced_embeddings = tsne.fit_transform(embeddings)
-plt.scatter(reduced_embeddings[:, 0], reduced_embeddings[:, 1], c=labels, cmap='viridis')
-plt.colorbar()
-plt.savefig(f'{save_dir}/{model_key}_visualization.png')
+for i in range(len(labels[0])):
+    sublabels = [l[i] for l in labels]
+    plt.scatter(reduced_embeddings[:, 0], reduced_embeddings[:, 1], c=sublabels, cmap='viridis')
+    plt.colorbar()
+    plt.savefig(f'{save_dir}/{model_key}_visualization_{i}.png')
