@@ -160,6 +160,7 @@ for subject_id in tqdm(data, desc='Processing ADNI FDG PET'):
 dataset = list(dataset.values())
 train, test = train_test_split(dataset, test_size=0.2, random_state=4)
 tune, test = train_test_split(test, test_size=0.5, random_state=4)
+visualization = tune + test
 tune_temporal = [p for p in tune if len(p) >= 3]
 test_temporal = [p for p in test if len(p) >= 3]
 tune = [v for p in tune for v in p]
@@ -177,4 +178,5 @@ pickle.dump(tune, open(data_dir + 'tuningDataset.pkl', 'wb'))
 pickle.dump(test, open(data_dir + 'testingDataset.pkl', 'wb'))
 pickle.dump(tune_temporal, open(data_dir + 'tuningTemporalDataset.pkl', 'wb'))
 pickle.dump(test_temporal, open(data_dir + 'testingTemporalDataset.pkl', 'wb'))
+pickle.dump(visualization, open(data_dir + 'visualizationDataset.pkl', 'wb'))
 pickle.dump(taskMap, open(data_dir + 'taskMap.pkl', 'wb'))

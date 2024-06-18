@@ -22,3 +22,9 @@ MODELS:
 * 2D Version of Our Model
 * 2D Non-Temporal Version of Our Model
 * 3D Non-Temporal Version of Our Model
+* Basic (2D, Non-Temporal, Fixed Image Size)
+
+
+TO DO:
+* Retrieval Task (Labeled vs. Unlabeled)
+* Add Additional ADNI Temporal Labels
