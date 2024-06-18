@@ -8,7 +8,7 @@ from sklearn import metrics
 from src.config import Config
 from torch.utils.data import DataLoader
 from src.models.downstream import DownstreamModel
-from src.data.image_dataset_flat import ImageDataset
+from src.data.image_dataset_pretrained import ImageDataset
 
 model_key = 'dinov2_pretrained'
 EMBEDDING_DIM = 768
@@ -48,10 +48,10 @@ for task in tune_data:
         label_size = len(set([p[4] for p in task_tune]))
         multiclass = True
         
-    task_tune_data = ImageDataset(task_tune, config, 'cpu', patch_size=14, image_size = 320 if task == 'Chest X-Ray (CheXpert)' else 450 if task == 'Skin Lesion' else None, augment=False, downstream=True, multiclass=multiclass)
+    task_tune_data = ImageDataset(task_tune, config, 'cpu', patch_size=14, image_size = 320 if task == 'Chest X-Ray (CheXpert)' else 450 if task == 'Skin Lesion' else 256, augment=False, downstream=True, multiclass=multiclass)
     task_tune_loader = DataLoader(task_tune_data, batch_size=config.downstream_batch_size, shuffle=True, num_workers=config.num_workers)
     task_test = test_data[task]
-    task_test_data = ImageDataset(task_test, config, 'cpu', patch_size=14, image_size = 320 if task == 'Chest X-Ray (CheXpert)' else 450 if task == 'Skin Lesion' else None, augment=False, downstream=True, multiclass=multiclass)
+    task_test_data = ImageDataset(task_test, config, 'cpu', patch_size=14, image_size = 320 if task == 'Chest X-Ray (CheXpert)' else 450 if task == 'Skin Lesion' else 256, augment=False, downstream=True, multiclass=multiclass)
     task_test_loader = DataLoader(task_test_data, batch_size=config.downstream_batch_size, shuffle=False, num_workers=config.num_workers)
     
     taskType = task_map[task]

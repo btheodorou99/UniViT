@@ -7,10 +7,9 @@ from tqdm import tqdm
 from copy import deepcopy
 from src.config import Config
 import torch.nn.functional as F
-from torch.nn import DataParallel
 from torch.utils.data import DataLoader
-from src.models.univit_simple import UniViT
-from src.data.image_dataset import ImageDataset
+from src.models.univit_no3D import UniViT
+from src.data.image_dataset_no3D import ImageDataset
 
 SEED = 4
 random.seed(SEED)
@@ -18,7 +17,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 3
+cuda_num = 4
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
   torch.cuda.manual_seed_all(SEED)
@@ -32,8 +31,7 @@ train_loader = DataLoader(train_data, batch_size=config.batch_size, shuffle=True
 
 model = UniViT(config.max_height, 
                config.max_width, 
-               config.max_time, 
-               config.max_slice, 
+               config.max_time,
                config.num_channels, 
                config.patch_size, 
                config.representation_size, 
@@ -47,9 +45,9 @@ model = UniViT(config.max_height,
 optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
 model = model.to(device)
 
-if os.path.exists(f"{save_dir}/univit_simple.pt"):
+if os.path.exists(f"{save_dir}/univit_no3D.pt"):
     print("Loading previous model")
-    checkpoint = torch.load(f'{save_dir}/univit_simple.pt', map_location='cpu')
+    checkpoint = torch.load(f'{save_dir}/univit_no3D.pt', map_location='cpu')
     model.load_state_dict(checkpoint['model'])
     optimizer.load_state_dict(checkpoint['optimizer'])
     num_steps = checkpoint['steps']
@@ -126,9 +124,9 @@ while num_steps < config.tot_steps:
         num_steps += 1
         if num_steps % 1000 == 0:
             loss_plot.append(np.mean(running_loss))
-            torch.save({'model': model.state_dict(), 'optimizer': optimizer.state_dict(), 'steps': num_steps}, f'{save_dir}/univit_simple.pt')
+            torch.save({'model': model.state_dict(), 'optimizer': optimizer.state_dict(), 'steps': num_steps}, f'{save_dir}/univit_no3D.pt')
         if num_steps >= config.tot_steps:
             break
   
 pbar.close()
-pickle.dump(loss_plot, open(f'{save_dir}/univit_simple_loss_plot.pkl', 'wb'))
+pickle.dump(loss_plot, open(f'{save_dir}/univit_no3D_loss_plot.pkl', 'wb'))

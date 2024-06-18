@@ -168,6 +168,8 @@ class ImageDataset(Dataset):
 
     def __getitem__(self, idx):
         p = self.dataset[idx]
+        _, _, _, _, labels = p[-1]
+        p = p[:-1]
         image_tensor = torch.zeros(self.config.max_time, self.config.max_slice, self.config.num_channels, self.config.max_height, self.config.max_width, dtype=torch.float, device=self.device)
         dimension_tensor = torch.ones(4, dtype=torch.long)
         if len(p) > self.config.max_time:
@@ -177,7 +179,7 @@ class ImageDataset(Dataset):
             
         chosenDim = random.choice([dim for _, dim, _, _, _ in p])        
         dimension_tensor[0] = len(p)
-        for j, (path, _, _, _, labels) in enumerate(p):
+        for j, (path, _, _, _, _) in enumerate(p):
             img = self.load_image(path, chosenDim)
             image_tensor[j, :img.shape[0], :, :img.shape[2], :img.shape[3]] = img
             dimension_tensor[1] = img.shape[0]

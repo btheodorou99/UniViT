@@ -1,10 +1,11 @@
 import math
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from torchvision.ops import MLP
 from functools import partial
 from collections import OrderedDict
-from ..ops.misc import MLP
-from typing import Callable, Optional
+from typing import Callable, Tuple
 
 class MLPBlock(MLP):
     """Transformer MLP block."""
@@ -91,7 +92,6 @@ class Encoder(nn.Module):
 
     def __init__(
         self,
-        seq_length: int,
         num_layers: int,
         num_heads: int,
         hidden_dim: int,
@@ -103,7 +103,6 @@ class Encoder(nn.Module):
         super().__init__()
         # Note that batch_size is on the first dim because
         # we have batch_first=True in nn.MultiAttention() by default
-        self.pos_embedding = nn.Parameter(torch.empty(1, seq_length, hidden_dim).normal_(std=0.02))  # from BERT
         self.dropout = nn.Dropout(dropout)
         layers: OrderedDict[str, nn.Module] = OrderedDict()
         for i in range(num_layers):
@@ -120,117 +119,157 @@ class Encoder(nn.Module):
 
     def forward(self, input: torch.Tensor):
         torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, hidden_dim) got {input.shape}")
-        input = input + self.pos_embedding
         return self.ln(self.layers(self.dropout(input)))
 
-class VisionTransformer(nn.Module):
+class ProjectionHead(nn.Module):
+    def __init__(self, in_dim, out_dim, nlayers=3, hidden_dim=2048, bottleneck_dim=256):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(in_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, bottleneck_dim),
+        )
+        self.last_layer = nn.Linear(bottleneck_dim, out_dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.net(x)
+        x = F.normalize(x, p=2, dim=-1)
+        x = self.last_layer(x)
+        return x
+
+class UniViT(nn.Module):
     def __init__(
         self,
         image_size: int,
+        num_channels: int,
         patch_size: int,
+        representation_size: int,
         num_layers: int,
         num_heads: int,
-        hidden_dim: int,
+        projection_size: int,
         mlp_dim: int,
         dropout: float = 0.0,
         attention_dropout: float = 0.0,
-        num_classes: int = 1000,
-        representation_size: Optional[int] = None,
+        mask_prob: float = 0.15,
         norm_layer: Callable[..., torch.nn.Module] = partial(nn.LayerNorm, eps=1e-6),
+        posTypeHead: bool = False,
+        posMaskHead: bool = False,
     ):
         super().__init__()
-        torch._assert(image_size % patch_size == 0, "Input shape indivisible by patch size!")
+        torch._assert(image_size % patch_size == 0, "Image size indivisible by patch size!")
         self.image_size = image_size
+        self.image_channels = num_channels
         self.patch_size = patch_size
-        self.hidden_dim = hidden_dim
-        self.mlp_dim = mlp_dim
-        self.attention_dropout = attention_dropout
-        self.dropout = dropout
-        self.num_classes = num_classes
         self.representation_size = representation_size
+        self.projection_size = projection_size
+        self.mlp_dim = mlp_dim
+        self.dropout = dropout
+        self.attention_dropout = attention_dropout
+        self.mask_prob = mask_prob
         self.norm_layer = norm_layer
         self.conv_proj = nn.Conv2d(
-            in_channels=3, out_channels=hidden_dim, kernel_size=patch_size, stride=patch_size
+            in_channels=self.image_channels, out_channels=representation_size, kernel_size=patch_size, stride=patch_size
         )
-
-        seq_length = (image_size // patch_size) ** 2
+        self.masked_embed = nn.Parameter(torch.zeros(1, 1, representation_size))
+        
+        seq_length = (self.image_size // patch_size) ** 2
+        self.pos_embedding = nn.Embedding(seq_length, representation_size)
 
         # Add a class token
-        self.class_token = nn.Parameter(torch.zeros(1, 1, hidden_dim))
+        self.class_token = nn.Parameter(torch.zeros(1, 1, representation_size))
         seq_length += 1
 
         self.encoder = Encoder(
-            seq_length,
             num_layers,
             num_heads,
-            hidden_dim,
+            representation_size,
             mlp_dim,
             dropout,
             attention_dropout,
             norm_layer,
         )
         self.seq_length = seq_length
-
-        heads_layers: OrderedDict[str, nn.Module] = OrderedDict()
-        if representation_size is None:
-            heads_layers["head"] = nn.Linear(hidden_dim, num_classes)
-        else:
-            heads_layers["pre_logits"] = nn.Linear(hidden_dim, representation_size)
-            heads_layers["act"] = nn.Tanh()
-            heads_layers["head"] = nn.Linear(representation_size, num_classes)
-
-        self.heads = nn.Sequential(heads_layers)
-
-        # Init the patchify stem
-        fan_in = self.conv_proj.in_channels * self.conv_proj.kernel_size[0] * self.conv_proj.kernel_size[1]
-        nn.init.trunc_normal_(self.conv_proj.weight, std=math.sqrt(1 / fan_in))
-        if self.conv_proj.bias is not None:
-            nn.init.zeros_(self.conv_proj.bias)
-
-        if hasattr(self.heads, "pre_logits") and isinstance(self.heads.pre_logits, nn.Linear):
-            fan_in = self.heads.pre_logits.in_features
-            nn.init.trunc_normal_(self.heads.pre_logits.weight, std=math.sqrt(1 / fan_in))
-            nn.init.zeros_(self.heads.pre_logits.bias)
-
-        if isinstance(self.heads.head, nn.Linear):
-            nn.init.zeros_(self.heads.head.weight)
-            nn.init.zeros_(self.heads.head.bias)
+            
+        self.cls_head = ProjectionHead(representation_size, projection_size)
+        self.embed_head = ProjectionHead(representation_size, projection_size)
+        self.swap_prob = 0.2
+        if posTypeHead:
+            self.pos_head = nn.Sequential(nn.Linear(representation_size, representation_size), nn.ReLU(), nn.Linear(representation_size, 1))
+        elif posMaskHead:
+            self.pos_head = nn.Sequential(nn.Linear(representation_size, representation_size), nn.ReLU(), nn.Linear(representation_size, self.image_size * 2))
 
     def _process_input(self, x: torch.Tensor) -> torch.Tensor:
-        n, c, h, w = x.shape
+        b, c, h, w = x.shape
         p = self.patch_size
+        torch._assert(c == self.image_channels, f"Wrong number of image channels! Expected {self.image_channels} but got {c}!")
         torch._assert(h == self.image_size, f"Wrong image height! Expected {self.image_size} but got {h}!")
         torch._assert(w == self.image_size, f"Wrong image width! Expected {self.image_size} but got {w}!")
         n_h = h // p
         n_w = w // p
 
-        # (n, c, h, w) -> (n, hidden_dim, n_h, n_w)
+        # (b, c, h, w) -> (b, hidden, n_h * n_w)
         x = self.conv_proj(x)
-        # (n, hidden_dim, n_h, n_w) -> (n, hidden_dim, (n_h * n_w))
-        x = x.reshape(n, self.hidden_dim, n_h * n_w)
+        x = x.reshape(b, self.representation_size, n_h * n_w)
 
-        # (n, hidden_dim, (n_h * n_w)) -> (n, (n_h * n_w), hidden_dim)
+        # (n, representation_size, (seq_len)) -> (n, (seq_len), representation_size)
         # The self attention layer expects inputs in the format (N, S, E)
         # where S is the source sequence length, N is the batch size, E is the
         # embedding dimension
         x = x.permute(0, 2, 1)
 
         return x
-
-    def forward(self, x: torch.Tensor):
+    
+    def _mask_sequence(self, x: torch.Tensor) -> torch.Tensor:
+        bs, seq_len, _ = x.shape
+        mask = torch.rand((bs, seq_len), dtype=torch.float, device=x.device) < self.mask_prob
+        return mask
+    
+    def _prepare_sequence(self, x: torch.Tensor) -> torch.Tensor:
+        pos_indices = torch.arange(self.seq_length - 1, device=x.device)
+        pos_emb = self.pos_embedding(pos_indices)
+        x = x + pos_emb
+        
+        return x
+    
+    def forward(self, x: torch.Tensor, seqMask: bool = False, train: bool = False):
         # Reshape and permute the input tensor
         x = self._process_input(x)
-        n = x.shape[0]
+        bs, seq_len, _ = x.shape
+        if seqMask:
+            mask = self._mask_sequence(x)
+        else:
+            mask = torch.zeros((bs, seq_len), dtype=torch.bool, device=x.device)
+
+        x = (mask.float().unsqueeze(-1) * self.masked_embed) + ((~mask.unsqueeze(-1)).float() * x)
+        x = self._prepare_sequence(x)
 
         # Expand the class token to the full batch
-        batch_class_token = self.class_token.expand(n, -1, -1)
+        batch_class_token = self.class_token.expand(bs, -1, -1)
         x = torch.cat([batch_class_token, x], dim=1)
 
         x = self.encoder(x)
-
-        # Classifier "token" as used by standard language architectures
-        x = x[:, 0]
-
-        x = self.heads(x)
-
+        
+        if train:
+            cls, x = x[:, 0], x[:, 1:]
+            return self.cls_head(cls), self.embed_head(x), mask
+        
         return x
+    
+    def embed(self, x: torch.Tensor, train: bool = False):
+        # Reshape and permute the input tensor
+        x = self._process_input(x)
+        bs = x.shape[0]
+        x = self._prepare_sequence(x)
+
+        # Expand the class token to the full batch
+        batch_class_token = self.class_token.expand(bs, -1, -1)
+        x = torch.cat([batch_class_token, x], dim=1)
+        x = self.encoder(x)
+        cls = x[:, 0]
+        
+        if train:
+            return self.cls_head(cls)
+        
+        return cls

@@ -160,15 +160,21 @@ for subject_id in tqdm(data, desc='Processing ADNI FDG PET'):
 dataset = list(dataset.values())
 train, test = train_test_split(dataset, test_size=0.2, random_state=4)
 tune, test = train_test_split(test, test_size=0.5, random_state=4)
+tune_temporal = [p for p in tune if len(p) >= 3]
+test_temporal = [p for p in test if len(p) >= 3]
 tune = [v for p in tune for v in p]
 test = [v for p in test for v in p]
 
 # Separate the tuning and testing datasets by modality
 tune = {'Chest X-Ray (MIMIC)': [d for d in tune if d[3] == 'Chest X-Ray (MIMIC)'], 'Chest X-Ray (CheXpert)': [d for d in tune if d[3] == 'Chest X-Ray (CheXpert)'], 'Skin Lesion': [d for d in tune if d[3] == 'Skin Lesion'], 'MRI': [d for d in tune if d[3] == 'MRI'], 'Amyloid PET': [d for d in tune if d[3] == 'Amyloid PET'], 'FDG PET': [d for d in tune if d[3] == 'FDG PET']}
 test = {'Chest X-Ray (MIMIC)': [d for d in test if d[3] == 'Chest X-Ray (MIMIC)'], 'Chest X-Ray (CheXpert)': [d for d in test if d[3] == 'Chest X-Ray (CheXpert)'], 'Skin Lesion': [d for d in test if d[3] == 'Skin Lesion'], 'MRI': [d for d in test if d[3] == 'MRI'], 'Amyloid PET': [d for d in test if d[3] == 'Amyloid PET'], 'FDG PET': [d for d in test if d[3] == 'FDG PET']}
+tune_temporal = {'Chest X-Ray (MIMIC)': [p for p in tune_temporal if p[0][3] == 'Chest X-Ray (MIMIC)'], 'Chest X-Ray (CheXpert)': [p for p in tune_temporal if p[0][3] == 'Chest X-Ray (CheXpert)'], 'Skin Lesion': [p for p in tune_temporal if p[0][3] == 'Skin Lesion'], 'MRI': [p for p in tune_temporal if p[0][3] == 'MRI'], 'Amyloid PET': [p for p in tune_temporal if p[0][3] == 'Amyloid PET'], 'FDG PET': [p for p in tune_temporal if p[0][3] == 'FDG PET']}
+test_temporal = {'Chest X-Ray (MIMIC)': [p for p in test_temporal if p[0][3] == 'Chest X-Ray (MIMIC)'], 'Chest X-Ray (CheXpert)': [p for p in test_temporal if p[0][3] == 'Chest X-Ray (CheXpert)'], 'Skin Lesion': [p for p in test_temporal if p[0][3] == 'Skin Lesion'], 'MRI': [p for p in test_temporal if p[0][3] == 'MRI'], 'Amyloid PET': [p for p in test_temporal if p[0][3] == 'Amyloid PET'], 'FDG PET': [p for p in test_temporal if p[0][3] == 'FDG PET']}
 taskMap = {'Chest X-Ray (MIMIC)': 'Multi-Label Classification', 'Chest X-Ray (CheXpert)': 'Multi-Label Classification', 'Skin Lesion': 'Multi-Label Classification', 'MRI': 'Multi-Class Classification', 'Amyloid PET': 'Multi-Class Classification', 'FDG PET': 'Multi-Class Classification'}
 
 pickle.dump(train, open(data_dir + 'trainingDataset.pkl', 'wb'))
 pickle.dump(tune, open(data_dir + 'tuningDataset.pkl', 'wb'))
 pickle.dump(test, open(data_dir + 'testingDataset.pkl', 'wb'))
+pickle.dump(tune_temporal, open(data_dir + 'tuningTemporalDataset.pkl', 'wb'))
+pickle.dump(test_temporal, open(data_dir + 'testingTemporalDataset.pkl', 'wb'))
 pickle.dump(taskMap, open(data_dir + 'taskMap.pkl', 'wb'))

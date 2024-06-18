@@ -19,6 +19,7 @@ class ImageDataset(Dataset):
         self.multiclass = multiclass
         if self.patch_size is None:
             self.transform = processing_fn
+            self.toImg = transforms.ToPILImage()
         elif self.image_size is not None:
             self.transform = transforms.Compose([
                 transforms.Resize((self.image_size, self.image_size)),
@@ -39,7 +40,9 @@ class ImageDataset(Dataset):
                 img = img[:,:,:,0]
             img = img[:,:,img.shape[2] // 2] # Take middle slice for 3D images
             img = img.unsqueeze(0).repeat(3, 1, 1) # Repeat for 3 channels
-            if self.image_size is not None:
+            if self.patch_size is None:
+                img = self.transform(self.toImg(img))
+            elif self.image_size is not None:
                 img = F.interpolate(img.unsqueeze(0), size=(self.image_size, self.image_size), mode='bilinear', align_corners=False).squeeze(0)
         elif image_path.endswith('.jpg'):
             img = Image.open(image_path).convert('RGB')
@@ -67,7 +70,9 @@ class ImageDataset(Dataset):
         return img
 
     def __getitem__(self, idx):
-        path, _, _, _, labels = self.dataset[idx]
+        p = self.dataset[idx]
+        _, _, _, _, labels = p[-1]
+        path, _, _, _, _ = p[-2]
         image_tensor = self.load_image(path)
         if self.init_augment:
             image_tensor = self.augment(image_tensor)

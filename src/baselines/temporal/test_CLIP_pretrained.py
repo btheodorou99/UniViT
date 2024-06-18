@@ -1,4 +1,5 @@
-# https://github.com/bytedance/ibot/tree/main
+# pip install git+https://github.com/openai/CLIP.git
+import clip
 import torch
 import random
 import pickle
@@ -8,11 +9,10 @@ from sklearn import metrics
 from src.config import Config
 from torch.utils.data import DataLoader
 from src.models.downstream import DownstreamModel
-from src.data.image_dataset_pretrained import ImageDataset
-from src.baselines.external.models.ibot import vit_base
+from src.baselines.temporal.data.image_dataset_pretrained import ImageDataset
 
-model_key = 'ibot_pretrained'
-EMBEDDING_DIM = 768
+model_key = 'temporal__clip_pretrained'
+EMBEDDING_DIM = 512
 
 SEED = 4
 random.seed(SEED)
@@ -20,21 +20,23 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 2
+cuda_num = 0
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
   torch.cuda.manual_seed_all(SEED)
 
 data_dir = '/shared/bpt3/data/UniViT/data'
 save_dir = '/shared/bpt3/data/UniViT/save'
-tune_data = pickle.load(open(f'{data_dir}/tuningDataset.pkl', 'rb'))
-tune_data = {task: [p for p in tune_data[task] if p[4] is not None] for task in tune_data}
-test_data = pickle.load(open(f'{data_dir}/testingDataset.pkl', 'rb'))
-test_data = {task: [p for p in test_data[task] if p[4] is not None] for task in test_data}
+tune_data = pickle.load(open(f'{data_dir}/tuningTemporalDataset.pkl', 'rb'))
+tune_data = {task: [p for p in tune_data[task] if p[-1][4] is not None] for task in tune_data}
+test_data = pickle.load(open(f'{data_dir}/testingTemporalDataset.pkl', 'rb'))
+test_data = {task: [p for p in test_data[task] if p[-1][4] is not None] for task in test_data}
 task_map = pickle.load(open(f'{data_dir}/taskMap.pkl', 'rb'))
+valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t]]
+tune_data = {task: tune_data[task] for task in valid_tasks}
+test_data = {task: test_data[task] for task in valid_tasks}
 
-model = vit_base()
-model.load_state_dict(torch.utils.model_zoo.load_url('https://lf3-nlp-opensource.bytetos.com/obj/nlp-opensource/archive/2022/ibot/vitb_16_rand_mask/checkpoint_teacher.pth')['state_dict'])
+model, preprocess = clip.load("ViT-B/16", device='cpu')
 model.eval()
 model.requires_grad_(False)
 model.to(device)
@@ -43,18 +45,18 @@ allResults = {}
 for task in tune_data:
     print(f'\n\nDownstream Evaluation on {task}')
     task_tune = tune_data[task]
-    label = task_tune[0][4]
+    label = task_tune[0][0][4]
     if isinstance(label, list):
         label_size = len(label)
         multiclass = False
     else:
-        label_size = len(set([p[4] for p in task_tune]))
+        label_size = len(set([p[0][4] for p in task_tune]))
         multiclass = True
         
-    task_tune_data = ImageDataset(task_tune, config, 'cpu', patch_size=14, image_size = 320 if task == 'Chest X-Ray (CheXpert)' else 450 if task == 'Skin Lesion' else 256, augment=False, downstream=True, multiclass=multiclass)
+    task_tune_data = ImageDataset(task_tune, config, 'cpu', processing_fn=preprocess, augment=False, downstream=True, multiclass=multiclass)
     task_tune_loader = DataLoader(task_tune_data, batch_size=config.downstream_batch_size, shuffle=True, num_workers=config.num_workers)
     task_test = test_data[task]
-    task_test_data = ImageDataset(task_test, config, 'cpu', patch_size=14, image_size = 320 if task == 'Chest X-Ray (CheXpert)' else 450 if task == 'Skin Lesion' else 256, augment=False, downstream=True, multiclass=multiclass)
+    task_test_data = ImageDataset(task_test, config, 'cpu', processing_fn=preprocess, augment=False, downstream=True, multiclass=multiclass)
     task_test_loader = DataLoader(task_test_data, batch_size=config.downstream_batch_size, shuffle=False, num_workers=config.num_workers)
     
     taskType = task_map[task]
@@ -77,7 +79,7 @@ for task in tune_data:
             batch_images = batch_images.to(device)
             batch_labels = batch_labels.to(device)
             with torch.no_grad():
-                representations = model(batch_images)
+                representations = model.encode_image(batch_images)
             predictions = downstream(representations)
             predictions = train_activation(predictions)
             loss = loss_fn(predictions, batch_labels)
@@ -91,7 +93,7 @@ for task in tune_data:
         batch_images = batch_images.to(device)
         batch_labels = batch_labels.to(device)
         with torch.no_grad():
-            representations = model(batch_images)
+            representations = model.encode_image(batch_images)
             predictions = downstream(representations)
             predictions = test_activation(predictions)
             task_preds.extend(predictions.cpu().tolist())

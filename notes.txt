@@ -13,9 +13,9 @@ EVALUATION:
 * Qualitative Embedding Visualization
   - 3D Patterns
   - Temporal Patterns
-* Figure Our Resolution
+* Figure Out Resolution
   - Do We Need Multi-Resolution (Nice Part of Flexibility Story, Also Adds Challenge to Model)
-  - How Do We Evaluate?
+  - How Do We Evaluate Beyond a Method Without (Which Likely Improves Performance)?
 
 
 MODELS:

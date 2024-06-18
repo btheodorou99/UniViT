@@ -9,7 +9,7 @@ from sklearn import metrics
 from src.config import Config
 from torch.utils.data import DataLoader
 from src.models.downstream import DownstreamModel
-from src.data.image_dataset_flat import ImageDataset
+from src.data.image_dataset_pretrained import ImageDataset
 
 model_key = 'clip_pretrained'
 EMBEDDING_DIM = 512

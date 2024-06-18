@@ -67,7 +67,7 @@ class EncoderBlock(nn.Module):
     def __init__(
         self,
         num_heads: int,
-        representation_size: int,
+        hidden_dim: int,
         mlp_dim: int,
         dropout: float,
         attention_dropout: float,
@@ -77,16 +77,16 @@ class EncoderBlock(nn.Module):
         self.num_heads = num_heads
 
         # Attention block
-        self.ln_1 = norm_layer(representation_size)
-        self.self_attention = nn.MultiheadAttention(representation_size, num_heads, dropout=attention_dropout, batch_first=True)
+        self.ln_1 = norm_layer(hidden_dim)
+        self.self_attention = nn.MultiheadAttention(hidden_dim, num_heads, dropout=attention_dropout, batch_first=True)
         self.dropout = nn.Dropout(dropout)
 
         # MLP block
-        self.ln_2 = norm_layer(representation_size)
-        self.mlp = MLPBlock(representation_size, mlp_dim, dropout)
+        self.ln_2 = norm_layer(hidden_dim)
+        self.mlp = MLPBlock(hidden_dim, mlp_dim, dropout)
 
     def forward(self, input: torch.Tensor, mask: Optional[torch.Tensor] = None):
-        torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, representation_size) got {input.shape}")
+        torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, hidden_dim) got {input.shape}")
         x = self.ln_1(input)
         x, _ = self.self_attention(x, x, x, key_padding_mask=mask, need_weights=False)
         x = self.dropout(x)
@@ -104,7 +104,7 @@ class Encoder(nn.Module):
         self,
         num_layers: int,
         num_heads: int,
-        representation_size: int,
+        hidden_dim: int,
         mlp_dim: int,
         dropout: float,
         attention_dropout: float,
@@ -118,17 +118,17 @@ class Encoder(nn.Module):
         for i in range(num_layers):
             layers[f"encoder_layer_{i}"] = EncoderBlock(
                 num_heads,
-                representation_size,
+                hidden_dim,
                 mlp_dim,
                 dropout,
                 attention_dropout,
                 norm_layer,
             )
         self.layers = MaskedSequential(layers)
-        self.ln = norm_layer(representation_size)
+        self.ln = norm_layer(hidden_dim)
 
     def forward(self, input: torch.Tensor, mask: Optional[torch.Tensor] = None):
-        torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, representation_size) got {input.shape}")
+        torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, hidden_dim) got {input.shape}")
         return self.ln(self.layers(self.dropout(input), mask))
 
 class ProjectionHead(nn.Module):

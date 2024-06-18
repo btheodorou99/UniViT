@@ -8,7 +8,6 @@ from torch.utils.data import Dataset
 
 MIN_CROP = 0.8
 MIN_RESOLUTION = 32
-TIME_AUGMENTATION_PROB = 1 / 2
 SLICE_AUGMENTATION_PROB = 1 / 2
 IMAGE_AUGMENTATION_PROB = 3 / 4
 
@@ -74,17 +73,17 @@ class ImageDataset(Dataset):
 
         return img
     
-    # dim is (time_steps, slices, height, width)
+    # dim is (slices, height, width)
     
     def random_crop(self, img, dim):
-        crop_height = random.randint(int(dim[2] * MIN_CROP), img.shape[3])  # Adjust range as needed
-        crop_width = random.randint(int(dim[3] * MIN_CROP), img.shape[4])  # Adjust range as needed
-        i, j, h, w = transforms.RandomCrop.get_params(img[0, 0, 0, :, :], output_size=(crop_height, crop_width))
-        img[:, :, :, :crop_height, :crop_width] = img[:, :, :, i:i+h, j:j+w]
-        img[:, :, :, crop_height:, :] = 0
-        img[:, :, :, :, crop_width:] = 0
-        dim[2] = crop_height
-        dim[3] = crop_width
+        crop_height = random.randint(int(dim[2] * MIN_CROP), img.shape[2])  # Adjust range as needed
+        crop_width = random.randint(int(dim[3] * MIN_CROP), img.shape[3])  # Adjust range as needed
+        i, j, h, w = transforms.RandomCrop.get_params(img[0, 0, :, :], output_size=(crop_height, crop_width))
+        img[:, :, :crop_height, :crop_width] = img[:, :, i:i+h, j:j+w]
+        img[:, :, crop_height:, :] = 0
+        img[:, :, :, crop_width:] = 0
+        dim[1] = crop_height
+        dim[2] = crop_width
         return img, dim
 
     def random_resize(self, img, dim):
@@ -93,61 +92,37 @@ class ImageDataset(Dataset):
         scale = random.uniform(min_scale, max_scale)
         height = min(max(int(dim[2] * scale), MIN_RESOLUTION), self.config.max_height)
         width = min(max(int(dim[3] * scale), MIN_RESOLUTION), self.config.max_width)
-        img[:, :, :, :height, :width] = F.interpolate(img[:, :, :, :dim[2], :dim[3]].view(-1, self.config.num_channels, dim[2], dim[3]), size=(height, width), mode='bilinear', align_corners=False).view(img.shape[0], img.shape[1], self.config.num_channels, height, width)
-        img[:, :, :, height:, :] = 0
-        img[:, :, :, :, width:] = 0
-        dim[2] = height
-        dim[3] = width
-        return img, dim
-
-    def remove_timestep(self, img, dim):
-        if dim[0] > 2:  # Check if there are multiple time steps
-            idx_to_remove = random.randint(0, dim[0] - 1)
-            img[idx_to_remove:-1, :, :, :, :] = img[idx_to_remove+1:, :, :, :, :].clone()
-            img[-1, :, :, :, :] = 0
-            dim[0] = dim[0] - 1
-            
-        return img, dim
-
-    def select_timestep(self, img, dim):
-        if dim[0] > 1:
-            idx_to_select = random.randint(0, dim[0] - 1)
-            img[0, :, :, :, :] = img[idx_to_select, :, :, :, :]
-            img[1:, :, :, :, :] = 0
-            dim[0] = 1
+        img[:, :, :height, :width] = F.interpolate(img[:, :, :dim[2], :dim[3]], size=(height, width), mode='bilinear', align_corners=False)
+        img[:, :, height:, :] = 0
+        img[:, :, :, width:] = 0
+        dim[1] = height
+        dim[2] = width
         return img, dim
 
     def slice_interpolation(self, img, dim):
         # Interpolating slices if there are multiple, adjusting to a specific number of slices
-        if dim[1] > 2:
-            slices = random.randint(2, dim[1])  # Target number of slices, adjust as needed
-            img = img.permute(0, 2, 1, 3, 4)
-            img[:, :, :slices, :dim[2], :dim[3]] = F.interpolate(img[:, :, :dim[1], :dim[2], :dim[3]], size=(slices, dim[2], dim[3]), mode='trilinear', align_corners=False)
-            img = img.permute(0, 2, 1, 3, 4)
-            img[:, slices:, :, :, :] = 0
-            dim[1] = slices
+        if dim[0] > 2:
+            slices = random.randint(2, dim[0])  # Target number of slices, adjust as needed
+            img = img.permute(1, 0, 2, 3)
+            img[:, :slices, :dim[1], :dim[2]] = F.interpolate(img[:, :dim[0], :dim[1], :dim[2]].unsqueeze(0), size=(slices, dim[1], dim[2]), mode='trilinear', align_corners=False).squeeze(0)
+            img = img.permute(1, 0, 2, 3)
+            img[slices:, :, :, :] = 0
+            dim[0] = slices
         return img, dim
 
     def select_slice(self, img, dim):
         if dim[1] > 1:
-            idx = random.randint(0, dim[1] - 1)
-            img[:, 0, :, :, :] = img[:, idx, :, :, :]
-            img[:, 1:, :, :, :] = 0
-            dim[1] = 1
+            idx = random.randint(0, dim[0] - 1)
+            img[0, :, :, :] = img[idx, :, :, :]
+            img[1:, :, :, :] = 0
+            dim[0] = 1
         return img, dim
     
     def augment(self, img, dim):
         hasAugmented = False
-        if dim[0] > 1 and random.random() < TIME_AUGMENTATION_PROB:
+        if dim[0] > 1 and random.random() < SLICE_AUGMENTATION_PROB:    
             hasAugmented = True
             if dim[0] > 2 and random.random() < 0.5:
-                img, dim = self.remove_timestep(img, dim)
-            else:
-                img, dim = self.select_timestep(img, dim)
-        
-        if dim[1] > 1 and random.random() < SLICE_AUGMENTATION_PROB:    
-            hasAugmented = True
-            if dim[1] > 2 and random.random() < 0.5:
                 img, dim = self.slice_interpolation(img, dim)
             else:
                 img, dim = self.select_slice(img, dim)
@@ -167,22 +142,14 @@ class ImageDataset(Dataset):
         return img, dim
 
     def __getitem__(self, idx):
-        p = self.dataset[idx]
-        image_tensor = torch.zeros(self.config.max_time, self.config.max_slice, self.config.num_channels, self.config.max_height, self.config.max_width, dtype=torch.float, device=self.device)
-        dimension_tensor = torch.ones(4, dtype=torch.long)
-        if len(p) > self.config.max_time:
-            indices = list(range(len(p)))
-            random.shuffle(indices)
-            p = [p[i] for i in sorted(indices[:self.config.max_time])]
-            
-        chosenDim = random.choice([dim for _, dim, _, _, _ in p])        
-        dimension_tensor[0] = len(p)
-        for j, (path, _, _, _, labels) in enumerate(p):
-            img = self.load_image(path, chosenDim)
-            image_tensor[j, :img.shape[0], :, :img.shape[2], :img.shape[3]] = img
-            dimension_tensor[1] = img.shape[0]
-            dimension_tensor[2] = img.shape[2]
-            dimension_tensor[3] = img.shape[3]
+        path, dim, _, _, labels = self.dataset[idx]
+        image_tensor = torch.zeros(self.config.max_slice, self.config.num_channels, self.config.max_height, self.config.max_width, dtype=torch.float, device=self.device)
+        dimension_tensor = torch.ones(3, dtype=torch.long)
+        img = self.load_image(path, dim)
+        image_tensor[:img.shape[0], :, :img.shape[2], :img.shape[3]] = img
+        dimension_tensor[0] = img.shape[0]
+        dimension_tensor[1] = img.shape[2]
+        dimension_tensor[2] = img.shape[3]
             
         if self.init_augment:
             image_tensor, dimension_tensor = self.augment(image_tensor, dimension_tensor)
