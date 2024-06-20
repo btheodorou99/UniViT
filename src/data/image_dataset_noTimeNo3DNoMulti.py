@@ -18,7 +18,6 @@ class ImageDataset(Dataset):
         self.multiclass = multiclass
         self.image_size = config.max_height
         self.transform = transforms.Compose([
-            transforms.Resize((self.image_size, self.image_size)),
             transforms.ToTensor(),
         ])
 
@@ -37,6 +36,9 @@ class ImageDataset(Dataset):
             img = self.transform(img)
         else:
             raise ValueError('Invalid image format')
+        
+        if img.shape[1] != self.image_size or img.shape[2] != self.image_size:
+            img = F.interpolate(img.unsqueeze(0), size=(self.image_size, self.image_size), mode='bilinear', align_corners=True).squeeze(0)
 
         return img
     
