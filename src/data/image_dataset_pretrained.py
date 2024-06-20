@@ -44,7 +44,7 @@ class ImageDataset(Dataset):
                 img = self.transform(self.toImg(img))
             elif self.image_size is not None:
                 img = F.interpolate(img.unsqueeze(0), size=(self.image_size, self.image_size), mode='bilinear', align_corners=False).squeeze(0)
-        elif image_path.endswith('.jpg'):
+        elif image_path.endswith('.jpg') or image_path.endswith('.png') or image_path.endswith('.tif'):
             img = Image.open(image_path).convert('RGB')
             img = self.transform(img)
         else: 

@@ -22,6 +22,10 @@ mimic_cxr_dir = '/srv/local/data/MIMIC-CXR/'
 chexpert_dir = '/srv/local/data/CheXpert/'
 isic_dir = '/srv/local/data/ISIC_SkinLesion/'
 adni_dir = '/srv/local/data/ADNI/'
+deep_lesion_dir = '/srv/local/data/DeepLesion/'
+covid_cxr_dir = '/srv/local/data/COVID-QU-Ex/'
+crc_he_dir1 = '/srv/local/data/NCT-CRC-HE-100K/'
+crc_he_dir2 = '/srv/local/data/CRC-VAL-HE-7K/'
 
 # Do some label processing
 chestXrayLabelIdx = [0, 1, 3, 7, 8, 12, 13]
@@ -134,6 +138,7 @@ for subject_id in tqdm(data, desc='Processing ADNI AV45 PET'):
     for date in sorted(data[subject_id].keys()):
         path = f'{adni_dir}AV45_PET/{data[subject_id][date]["filename"]}'
         dimensions = data[subject_id][date]['shape']
+        dimensions = (dimensions[2], dimensions[0], dimensions[1])
         note = [t - 100 for t in tokenizer.encode(f'Amyloid PET scan of a brain')]
         labels = adni_labels[subject_id] if subject_id in adni_labels else None
         modality = 'Amyloid PET'
@@ -148,9 +153,75 @@ for subject_id in tqdm(data, desc='Processing ADNI FDG PET'):
     for date in sorted(data[subject_id].keys()):
         path = f'{adni_dir}FDG_PET/{data[subject_id][date]["filename"]}'
         dimensions = data[subject_id][date]['shape']
+        dimensions = (dimensions[2], dimensions[0], dimensions[1])
         note = [t - 100 for t in tokenizer.encode(f'FDG PET scan of a brain')]
         labels = adni_labels[subject_id] if subject_id in adni_labels else None
         modality = 'FDG PET'
+        if subject_id not in dataset:
+            dataset[subject_id] = [(path, dimensions, note, modality, labels)]
+        else:
+            dataset[subject_id].append((path, dimensions, note, modality, labels))
+
+# Process the DeepLesion dataset
+data = pd.read_csv(deep_lesion_dir + 'DL_info.csv', 'rb')
+for row in tqdm(data.itertuples(), total=len(data), desc='Processing DeepLesion'):
+    path = f"{deep_lesion_dir}{'_'.join(row.File_name.split('_')[:-1])}.npy"
+    slices = row.Slice_range.split(', ')
+    image_size = row.Image_size.split(', ')
+    dimensions = (int(slices[1]) - int(slices[0]) + 1, int(image_size[0]), int(image_size[1]))
+    note = [t - 100 for t in tokenizer.encode(f'CT scan of a {row.Patient_age} year old {"male" if row.Patient_gender == "M" else "female"} patient with a lesion')]
+    labels = row.Coarse_lesion_type if row.Coarse_lesion_type != -1 else None
+    subject_id = f'DL_{row.Patient_index}'
+    modality = 'CT'
+    if subject_id not in dataset:
+        dataset[subject_id] = [(path, dimensions, note, modality, labels)]
+    else:
+        dataset[subject_id].append((path, dimensions, note, modality, labels))
+        
+# Process the COVID-QU-Ex dataset
+for top_dir in os.listdir(covid_cxr_dir):
+    if os.path.isdir(f'{covid_cxr_dir}{top_dir}'):
+        for split in os.listdir(f'{covid_cxr_dir}{top_dir}/{top_dir}/'):
+            for cls in os.listdir(f'{covid_cxr_dir}{top_dir}/{top_dir}/{split}/'):
+                for img in os.listdir(f'{covid_cxr_dir}{top_dir}/{top_dir}/{split}/{cls}/images/'):
+                    path = f'{covid_cxr_dir}{top_dir}/{top_dir}/{split}/{cls}/images/{img}'
+                    dimensions = Image.open(path).size
+                    dimensions = (1, dimensions[1], dimensions[0])
+                    note = [t - 100 for t in tokenizer.encode(f'Chest X-Ray of a {cls} patient')]
+                    labels = 0 if cls == 'normal' else 1 if cls == 'pneumonia' else 2
+                    subject_id = path.split('/')[-1].split('_')[0] if 'sub-' in path else path 
+                    modality = 'Chest X-Ray (COVID-QU-Ex)'
+                    if subject_id not in dataset:
+                        dataset[subject_id] = [(path, dimensions, note, modality, labels)]
+                    else:
+                        dataset[subject_id].append((path, dimensions, note, modality, labels))
+
+# Process the CRC-HE dataset
+clsMap = {'ADI': 'Adipose', 'BACK': 'Background', 'DEB': 'Debris', 'LYM': 'Lymphocytes', 'MUC': 'Mucus', 'MUS': 'Smooth Muscle', 'NORM': 'Normal Colon Mucosa', 'STR': 'Cancer-Associated Stroma', 'TUM': 'Colorectal Adenocarcinoma Epithelium'}
+labelIdx = {'ADI': 0, 'BACK': 1, 'DEB': 2, 'LYM': 3, 'MUC': 4, 'MUS': 5, 'NORM': 6, 'STR': 7, 'TUM': 8}
+for cls in os.listdir(crc_he_dir1):
+    for img in os.listdir(f'{crc_he_dir1}{cls}/'):
+        path = f'{crc_he_dir1}{cls}/{img}'
+        dimensions = Image.open(path).size
+        dimensions = (1, dimensions[1], dimensions[0])
+        note = [t - 100 for t in tokenizer.encode(f'Histopathology image of a {clsMap[cls]}')]
+        labels = labelIdx[cls]
+        subject_id = path.split('/')[-1].split('-')[-1].split('.')[0]
+        modality = 'Histopathology'
+        if subject_id not in dataset:
+            dataset[subject_id] = [(path, dimensions, note, modality, labels)]
+        else:
+            dataset[subject_id].append((path, dimensions, note, modality, labels))
+            
+for cls in os.listdir(crc_he_dir2):
+    for img in os.listdir(f'{crc_he_dir2}{cls}/'):
+        path = f'{crc_he_dir2}{cls}/{img}'
+        dimensions = Image.open(path).size
+        dimensions = (1, dimensions[1], dimensions[0])
+        note = [t - 100 for t in tokenizer.encode(f'Histopathology image of a {clsMap[cls]}')]
+        labels = labelIdx[cls]
+        subject_id = path.split('/')[-1].split('-')[-1].split('.')[0]
+        modality = 'Histopathology'
         if subject_id not in dataset:
             dataset[subject_id] = [(path, dimensions, note, modality, labels)]
         else:
@@ -167,11 +238,11 @@ tune = [v for p in tune for v in p]
 test = [v for p in test for v in p]
 
 # Separate the tuning and testing datasets by modality
-tune = {'Chest X-Ray (MIMIC)': [d for d in tune if d[3] == 'Chest X-Ray (MIMIC)'], 'Chest X-Ray (CheXpert)': [d for d in tune if d[3] == 'Chest X-Ray (CheXpert)'], 'Skin Lesion': [d for d in tune if d[3] == 'Skin Lesion'], 'MRI': [d for d in tune if d[3] == 'MRI'], 'Amyloid PET': [d for d in tune if d[3] == 'Amyloid PET'], 'FDG PET': [d for d in tune if d[3] == 'FDG PET']}
-test = {'Chest X-Ray (MIMIC)': [d for d in test if d[3] == 'Chest X-Ray (MIMIC)'], 'Chest X-Ray (CheXpert)': [d for d in test if d[3] == 'Chest X-Ray (CheXpert)'], 'Skin Lesion': [d for d in test if d[3] == 'Skin Lesion'], 'MRI': [d for d in test if d[3] == 'MRI'], 'Amyloid PET': [d for d in test if d[3] == 'Amyloid PET'], 'FDG PET': [d for d in test if d[3] == 'FDG PET']}
-tune_temporal = {'Chest X-Ray (MIMIC)': [p for p in tune_temporal if p[0][3] == 'Chest X-Ray (MIMIC)'], 'Chest X-Ray (CheXpert)': [p for p in tune_temporal if p[0][3] == 'Chest X-Ray (CheXpert)'], 'Skin Lesion': [p for p in tune_temporal if p[0][3] == 'Skin Lesion'], 'MRI': [p for p in tune_temporal if p[0][3] == 'MRI'], 'Amyloid PET': [p for p in tune_temporal if p[0][3] == 'Amyloid PET'], 'FDG PET': [p for p in tune_temporal if p[0][3] == 'FDG PET']}
-test_temporal = {'Chest X-Ray (MIMIC)': [p for p in test_temporal if p[0][3] == 'Chest X-Ray (MIMIC)'], 'Chest X-Ray (CheXpert)': [p for p in test_temporal if p[0][3] == 'Chest X-Ray (CheXpert)'], 'Skin Lesion': [p for p in test_temporal if p[0][3] == 'Skin Lesion'], 'MRI': [p for p in test_temporal if p[0][3] == 'MRI'], 'Amyloid PET': [p for p in test_temporal if p[0][3] == 'Amyloid PET'], 'FDG PET': [p for p in test_temporal if p[0][3] == 'FDG PET']}
-taskMap = {'Chest X-Ray (MIMIC)': 'Multi-Label Classification', 'Chest X-Ray (CheXpert)': 'Multi-Label Classification', 'Skin Lesion': 'Multi-Label Classification', 'MRI': 'Multi-Class Classification', 'Amyloid PET': 'Multi-Class Classification', 'FDG PET': 'Multi-Class Classification'}
+tune = {'Chest X-Ray (MIMIC)': [d for d in tune if d[3] == 'Chest X-Ray (MIMIC)'], 'Chest X-Ray (CheXpert)': [d for d in tune if d[3] == 'Chest X-Ray (CheXpert)'], 'Skin Lesion': [d for d in tune if d[3] == 'Skin Lesion'], 'MRI': [d for d in tune if d[3] == 'MRI'], 'Amyloid PET': [d for d in tune if d[3] == 'Amyloid PET'], 'FDG PET': [d for d in tune if d[3] == 'FDG PET'], 'CT': [d for d in tune if d[3] == 'CT'], 'Chest X-Ray (COVID-QU-Ex)': [d for d in tune if d[3] == 'Chest X-Ray (COVID-QU-Ex)']}
+test = {'Chest X-Ray (MIMIC)': [d for d in test if d[3] == 'Chest X-Ray (MIMIC)'], 'Chest X-Ray (CheXpert)': [d for d in test if d[3] == 'Chest X-Ray (CheXpert)'], 'Skin Lesion': [d for d in test if d[3] == 'Skin Lesion'], 'MRI': [d for d in test if d[3] == 'MRI'], 'Amyloid PET': [d for d in test if d[3] == 'Amyloid PET'], 'FDG PET': [d for d in test if d[3] == 'FDG PET'], 'CT': [d for d in test if d[3] == 'CT'], 'Chest X-Ray (COVID-QU-Ex)': [d for d in test if d[3] == 'Chest X-Ray (COVID-QU-Ex)']}
+tune_temporal = {'Chest X-Ray (MIMIC)': [p for p in tune_temporal if p[0][3] == 'Chest X-Ray (MIMIC)'], 'Chest X-Ray (CheXpert)': [p for p in tune_temporal if p[0][3] == 'Chest X-Ray (CheXpert)'], 'Skin Lesion': [p for p in tune_temporal if p[0][3] == 'Skin Lesion'], 'MRI': [p for p in tune_temporal if p[0][3] == 'MRI'], 'Amyloid PET': [p for p in tune_temporal if p[0][3] == 'Amyloid PET'], 'FDG PET': [p for p in tune_temporal if p[0][3] == 'FDG PET'], 'CT': [p for p in tune_temporal if p[0][3] == 'CT'], 'Chest X-Ray (COVID-QU-Ex)': [p for p in tune_temporal if p[0][3] == 'Chest X-Ray (COVID-QU-Ex)']}
+test_temporal = {'Chest X-Ray (MIMIC)': [p for p in test_temporal if p[0][3] == 'Chest X-Ray (MIMIC)'], 'Chest X-Ray (CheXpert)': [p for p in test_temporal if p[0][3] == 'Chest X-Ray (CheXpert)'], 'Skin Lesion': [p for p in test_temporal if p[0][3] == 'Skin Lesion'], 'MRI': [p for p in test_temporal if p[0][3] == 'MRI'], 'Amyloid PET': [p for p in test_temporal if p[0][3] == 'Amyloid PET'], 'FDG PET': [p for p in test_temporal if p[0][3] == 'FDG PET'], 'CT': [p for p in test_temporal if p[0][3] == 'CT'], 'Chest X-Ray (COVID-QU-Ex)': [p for p in test_temporal if p[0][3] == 'Chest X-Ray (COVID-QU-Ex)']}
+taskMap = {'Chest X-Ray (MIMIC)': 'Multi-Label Classification', 'Chest X-Ray (CheXpert)': 'Multi-Label Classification', 'Skin Lesion': 'Multi-Label Classification', 'MRI': 'Multi-Class Classification', 'Amyloid PET': 'Multi-Class Classification', 'FDG PET': 'Multi-Class Classification', 'CT': 'Multi-Class Classification', 'Chest X-Ray (COVID-QU-Ex)': 'Multi-Class Classification'}
 
 pickle.dump(train, open(data_dir + 'trainingDataset.pkl', 'wb'))
 pickle.dump(tune, open(data_dir + 'tuningDataset.pkl', 'wb'))

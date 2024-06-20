@@ -33,7 +33,7 @@ class ImageDataset(Dataset):
             if len(img.shape) == 4:
                 img = img[:,:,:,0]
             img = img.permute(2, 0, 1).unsqueeze(1).repeat(1, 3, 1, 1)
-        elif image_path.endswith('.jpg'):
+        elif image_path.endswith('.jpg') or image_path.endswith('.png') or image_path.endswith('.tif'):
             img = Image.open(image_path).convert('RGB')
             img = self.transform(img).unsqueeze(0)
         else:
