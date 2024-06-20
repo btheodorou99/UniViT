@@ -22,11 +22,13 @@ device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu"
 if torch.cuda.is_available():
   torch.cuda.manual_seed_all(SEED)
 
-config.batch_size = config.effective_batch_size
+# config.batch_size = 192
+# config.max_height = 224
+# config.patch_size = 14
 data_dir = '/shared/bpt3/data/UniViT/data'
 save_dir = '/shared/bpt3/data/UniViT/save'
 train_data = pickle.load(open(f'{data_dir}/trainingDataset.pkl', 'rb'))
-train_data = [v for p in train_data for v in p]
+train_data = [v for p in train_data for v in p] # if v[3].startswith('Chest X-Ray')]
 train_data = ImageDataset(train_data, config, 'cpu')
 train_loader = DataLoader(train_data, batch_size=config.batch_size, shuffle=True, num_workers=config.num_workers)
 
@@ -108,7 +110,7 @@ while num_steps < config.tot_steps:
             cls_teacher2 = cls_teacher2.to(device)
             embd_seq_teacher2 = embd_seq_teacher2.to(device)
             
-        loss_cls = (cls_loss_fn(cls_model1, cls_teacher1, center_cls) + cls_loss_fn(cls_model2, cls_teacher2, center_cls)) / 2
+        loss_cls = (cls_loss_fn(cls_model1, cls_teacher2, center_cls) + cls_loss_fn(cls_model2, cls_teacher1, center_cls)) / 2
         loss_mim = (mim_loss_fn(embd_seq_model1, embd_seq_teacher1, center_patch, mask1) + mim_loss_fn(embd_seq_model2, embd_seq_teacher2, center_patch, mask2)) / 2
         loss = loss_cls + loss_mim
         loss.backward()

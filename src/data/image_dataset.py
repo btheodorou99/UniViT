@@ -6,11 +6,11 @@ import torch.nn.functional as F
 from torchvision import transforms
 from torch.utils.data import Dataset
 
-MIN_CROP = 0.8
+MIN_CROP = 0.5
 MIN_RESOLUTION = 32
-TIME_AUGMENTATION_PROB = 1 / 2
-SLICE_AUGMENTATION_PROB = 1 / 2
-IMAGE_AUGMENTATION_PROB = 3 / 4
+TIME_AUGMENTATION_PROB = 2 / 3
+SLICE_AUGMENTATION_PROB = 2 / 3
+IMAGE_AUGMENTATION_PROB = 4 / 5
 
 class ImageDataset(Dataset):
     def __init__(self, dataset, config, device, augment=False, downstream=False, multiclass=False):

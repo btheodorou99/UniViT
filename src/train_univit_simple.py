@@ -111,7 +111,7 @@ while num_steps < config.tot_steps:
             cls_teacher2 = cls_teacher2.to(device)
             embd_seq_teacher2 = embd_seq_teacher2.to(device)
             
-        loss_cls = (cls_loss_fn(cls_model1, cls_teacher1, center_cls) + cls_loss_fn(cls_model2, cls_teacher2, center_cls)) / 2
+        loss_cls = (cls_loss_fn(cls_model1, cls_teacher2, center_cls) + cls_loss_fn(cls_model2, cls_teacher1, center_cls)) / 2
         loss_mim = (mim_loss_fn(embd_seq_model1, embd_seq_teacher1, center_patch, mask1 & ~orig_mask1) + mim_loss_fn(embd_seq_model2, embd_seq_teacher2, center_patch, mask2 & ~orig_mask2)) / 2
         loss = loss_cls + loss_mim
         loss.backward()
