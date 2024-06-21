@@ -64,6 +64,7 @@ class ImageDataset(Dataset):
         return img
         
     def augment_batch(self, img):
+        img = img.clone()
         for i in range(img.shape[0]):
             img[i] = self.augment(img[i])
             

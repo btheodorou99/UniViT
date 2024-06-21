@@ -25,6 +25,7 @@ if torch.cuda.is_available():
 # config.batch_size = 192
 # config.max_height = 224
 # config.patch_size = 14
+config.batch_size = 64
 data_dir = '/shared/bpt3/data/UniViT/data'
 save_dir = '/shared/bpt3/data/UniViT/save'
 train_data = pickle.load(open(f'{data_dir}/trainingDataset.pkl', 'rb'))
@@ -43,7 +44,7 @@ model = UniViT(config.max_height,
                config.dropout, 
                config.attention_dropout,
                config.mask_prob)
-optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
+optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr)
 model = model.to(device)
 
 if os.path.exists(f"{save_dir}/univit_noTimeNo3DNoMulti.pt"):
@@ -113,9 +114,10 @@ while num_steps < config.tot_steps:
         loss_cls = (cls_loss_fn(cls_model1, cls_teacher2, center_cls) + cls_loss_fn(cls_model2, cls_teacher1, center_cls)) / 2
         loss_mim = (mim_loss_fn(embd_seq_model1, embd_seq_teacher1, center_patch, mask1) + mim_loss_fn(embd_seq_model2, embd_seq_teacher2, center_patch, mask2)) / 2
         loss = loss_cls + loss_mim
-        loss.backward()
-        optimizer.step()
         optimizer.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 3)
+        optimizer.step()
         center_cls, center_patch = update_centers(center_cls, center_patch, cls_teacher1, cls_teacher2, embd_seq_teacher1, embd_seq_teacher2)
         momentum_val = 1.0 + 0.5 * (config.momentum - 1.0) * (1 + np.cos(np.pi * num_steps / config.tot_steps))
         update_teacher_model(teacher_model, model, momentum_val)

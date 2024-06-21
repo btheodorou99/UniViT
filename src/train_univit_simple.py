@@ -7,7 +7,6 @@ from tqdm import tqdm
 from copy import deepcopy
 from src.config import Config
 import torch.nn.functional as F
-from torch.nn import DataParallel
 from torch.utils.data import DataLoader
 from src.models.univit_simple import UniViT
 from src.data.image_dataset import ImageDataset
