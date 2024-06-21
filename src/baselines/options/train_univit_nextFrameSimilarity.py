@@ -100,7 +100,7 @@ def frameSim_loss_fn(time_seq, slice_seq, time_mask, slice_mask):
 
 # Train Model
 model.train()
-pbar = tqdm(total=config.tot_steps, leave=False, desc='Current Loss: N/A')
+pbar = tqdm(total=config.tot_steps, leave=True, desc='Current Loss: N/A')
 pbar.update(num_steps)
 
 loss_plot = []

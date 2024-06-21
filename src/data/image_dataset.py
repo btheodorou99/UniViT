@@ -194,3 +194,85 @@ class ImageDataset(Dataset):
             return image_tensor, dimension_tensor, label_tensor
         
         return image_tensor, dimension_tensor
+    
+class KNNDataset(Dataset):
+    def __init__(self, dataset, config, device, mod_list):
+        self.dataset = dataset
+        self.config = config
+        self.device = device
+        self.mod_list = mod_list
+        self.transform = transforms.Compose([
+            transforms.ToTensor(),
+        ])
+
+    def __len__(self):
+        return len(self.dataset)
+      
+    def load_image(self, image_path, chosenDim):
+        if image_path.endswith('.npy'):
+            img = torch.tensor(np.load(image_path), dtype=torch.float)
+            if len(img.shape) == 4:
+                img = img[:,:,:,0]
+            img = img.permute(2, 0, 1).unsqueeze(1).repeat(1, 3, 1, 1)
+        elif image_path.endswith('.jpg') or image_path.endswith('.png') or image_path.endswith('.tif'):
+            img = Image.open(image_path).convert('RGB')
+            img = self.transform(img).unsqueeze(0)
+        else:
+            raise ValueError('Invalid image format')
+        
+        currDim = tuple(img[:, 0, :, :].shape)
+        if chosenDim is not None and chosenDim != currDim:
+            if currDim[1] == chosenDim[2] and currDim[2] == chosenDim[1]:
+                img = img.permute(0, 1, 3, 2)
+            elif (currDim[1] > chosenDim[1]) == (chosenDim[2] > currDim[2]) and (currDim[1] != chosenDim[1] and currDim[2] != chosenDim[2]):
+                img = img.permute(0, 1, 3, 2)
+                img = img.permute(1, 0, 2, 3).unsqueeze(0)
+                img = F.interpolate(img, size=(chosenDim[0], chosenDim[1], chosenDim[2]), mode='trilinear', align_corners=True)
+                img = img.squeeze(0).permute(1, 0, 2, 3)
+            else:
+                img = img.permute(1, 0, 2, 3).unsqueeze(0)
+                img = F.interpolate(img, size=(chosenDim[0], chosenDim[1], chosenDim[2]), mode='trilinear', align_corners=True)
+                img = img.squeeze(0).permute(1, 0, 2, 3)
+        
+        if img.shape[0] > self.config.max_slice:
+            scale_factor_slices = self.config.max_slice / img.shape[0]
+        else:
+            scale_factor_slices = 1
+        if img.shape[2] > self.config.max_height:
+            scale_factor_height = self.config.max_height / img.shape[2]
+        else:
+            scale_factor_height = 1
+        if img.shape[3] > self.config.max_width:
+            scale_factor_width = self.config.max_width / img.shape[3]
+        else:
+            scale_factor_width = 1
+        
+        scale_factor_image = min(scale_factor_height, scale_factor_width)
+        if min(scale_factor_image, scale_factor_slices) < 1:
+            img = img.permute(1, 0, 2, 3).unsqueeze(0)
+            img = F.interpolate(img, scale_factor=(scale_factor_slices, scale_factor_image, scale_factor_image), mode='trilinear', align_corners=True)
+            img = img.squeeze(0).permute(1, 0, 2, 3)
+
+        return img
+
+    def __getitem__(self, idx):
+        p, mod = self.dataset[idx]
+        image_tensor = torch.zeros(self.config.max_time, self.config.max_slice, self.config.num_channels, self.config.max_height, self.config.max_width, dtype=torch.float, device=self.device)
+        dimension_tensor = torch.ones(4, dtype=torch.long)
+        if len(p) > self.config.max_time:
+            indices = list(range(len(p)))
+            random.shuffle(indices)
+            p = [p[i] for i in sorted(indices[:self.config.max_time])]
+            
+        chosenDim = random.choice([dim for _, dim, _, _, _ in p])        
+        dimension_tensor[0] = len(p)
+        for j, (path, _, _, _, labels) in enumerate(p):
+            img = self.load_image(path, chosenDim)
+            image_tensor[j, :img.shape[0], :, :img.shape[2], :img.shape[3]] = img
+            dimension_tensor[1] = img.shape[0]
+            dimension_tensor[2] = img.shape[2]
+            dimension_tensor[3] = img.shape[3]
+            
+        label_tensor = torch.tensor(self.mod_list.index(mod), dtype=torch.long, device=self.device)
+        
+        return image_tensor, dimension_tensor, label_tensor

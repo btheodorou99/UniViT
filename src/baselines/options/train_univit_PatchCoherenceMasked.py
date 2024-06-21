@@ -118,7 +118,7 @@ def coherence_loss_fn(embds, mask, orig_mask):
 
 # Train Model
 model.train()
-pbar = tqdm(total=config.tot_steps, leave=False, desc='Current Loss: N/A')
+pbar = tqdm(total=config.tot_steps, leave=True, desc='Current Loss: N/A')
 pbar.update(num_steps)
 
 loss_plot = []

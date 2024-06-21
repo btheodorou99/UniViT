@@ -93,7 +93,7 @@ for modality in ['Chest X-Ray (MIMIC)', 'Chest X-Ray (CheXpert)', 'Skin Lesion',
 
     # Train Model
     model.train()
-    pbar = tqdm(total=config.tot_steps, leave=False, desc='Current Loss: N/A')
+    pbar = tqdm(total=config.tot_steps, leave=True, desc='Current Loss: N/A')
     pbar.update(num_steps)
 
     loss_plot = []

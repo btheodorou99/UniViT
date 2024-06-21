@@ -8,8 +8,9 @@ from copy import deepcopy
 from src.config import Config
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from src.data.image_dataset import ImageDataset
+from sklearn.neighbors import KNeighborsClassifier
 from src.models.univit_hierarchical import UniViT
+from src.data.image_dataset import ImageDataset, KNNDataset
 
 SEED = 4
 random.seed(SEED)
@@ -28,6 +29,14 @@ save_dir = '/shared/bpt3/data/UniViT/save'
 train_data = pickle.load(open(f'{data_dir}/trainingDataset.pkl', 'rb'))
 train_data = ImageDataset(train_data, config, 'cpu')
 train_loader = DataLoader(train_data, batch_size=config.batch_size, shuffle=True, num_workers=config.num_workers)
+knn_data = {mod: random.choices(data, k=500) for (mod, data) in pickle.load(open(f'{data_dir}/tuningDataset.pkl', 'rb')).items()}
+knn_train_data = [([p], mod) for mod in knn_data for p in knn_data[mod][:450]]
+knn_test_data = [([p], mod) for mod in knn_data for p in knn_data[mod][450:]]
+mod_list = list(knn_data.keys())
+knn_train_data = KNNDataset(knn_train_data, config, 'cpu', mod_list)
+knn_test_data = KNNDataset(knn_test_data, config, 'cpu', mod_list)
+knn_train_loader = DataLoader(knn_train_data, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers)
+knn_test_loader = DataLoader(knn_test_data, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers)
 
 model = UniViT(config.max_height, 
                config.max_width, 
@@ -92,12 +101,39 @@ def update_centers(center_cls, center_patch, cls1, cls2, embd_seq1, embd_seq2):
     center_patch = config.center_momentum * center_patch + (1 - config.center_momentum) * patch
     return center_cls, center_patch
 
+def validate(model, train, test):
+    model.eval()
+    images = []
+    labels = []
+    for batch_images, batch_dimensions, batch_labels in train:
+        batch_cls = model.embed(batch_images.to(device), batch_dimensions.to(device))
+        images.extend(batch_cls.cpu().detach().numpy())
+        labels.extend(batch_labels.numpy())
+    images = np.array(images)
+    labels = np.array(labels)
+    knn = KNeighborsClassifier(n_neighbors=5)
+    knn.fit(images, labels)
+    images = []
+    labels = []
+    for batch_images, batch_dimensions, batch_labels in test:
+        batch_cls = model.embed(batch_images.to(device), batch_dimensions.to(device))
+        images.extend(batch_cls.cpu().detach().numpy())
+        labels.extend(batch_labels.numpy())
+    images = np.array(images)    
+    labels = np.array(labels)
+    preds = knn.predict(images)
+    acc = (preds == labels).mean()
+    model.train()
+    return acc
+
 # Train Model
 model.train()
-pbar = tqdm(total=config.tot_steps, leave=False, desc='Current Loss: N/A')
+pbar = tqdm(total=config.tot_steps, leave=True, desc='Current Loss: N/A; Current KNN Acc: N/A')
 pbar.update(num_steps)
 
 loss_plot = []
+knn_plot = []
+knn_acc = 0
 center_cls = torch.zeros(1, config.projection_size).to(device)
 center_patch = torch.zeros(1, 1, config.projection_size).to(device)
 aggregated = False
@@ -131,13 +167,15 @@ while num_steps < config.tot_steps:
             momentum_val = 1.0 + 0.5 * (config.momentum - 1.0) * (1 + np.cos(np.pi * num_steps / config.tot_steps))
             update_teacher_model(teacher_model, model, momentum_val)
             running_loss = running_loss[-999:] + [batch_loss]
-            pbar.set_description(f'Current Loss: {np.mean(running_loss):.4f}')
+            pbar.set_description(f'Current Loss: {np.mean(running_loss):.4f}; Current KNN Acc: {knn_acc:.4f}')
             pbar.update(1)
             num_steps += 1
             aggregated = False
             batch_loss = 0
             if num_steps % 1000 == 0:
                 loss_plot.append(np.mean(running_loss))
+                knn_acc = validate(model, knn_train_loader, knn_test_loader)
+                knn_plot.append(knn_acc)
                 torch.save({'model': model.module.state_dict(), 'optimizer': optimizer.state_dict(), 'steps': num_steps}, f'{save_dir}/univit_hier.pt')
             if num_steps >= config.tot_steps:
                 break

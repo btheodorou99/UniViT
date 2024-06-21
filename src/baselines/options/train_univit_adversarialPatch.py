@@ -90,7 +90,7 @@ def update_centers(center_cls, center_patch, cls1, cls2, embd_seq1, embd_seq2):
 
 # Train Model
 model.train()
-pbar = tqdm(total=config.tot_steps, leave=False, desc='Current Loss: N/A')
+pbar = tqdm(total=config.tot_steps, leave=True, desc='Current Loss: N/A')
 pbar.update(num_steps)
 
 loss_plot = []

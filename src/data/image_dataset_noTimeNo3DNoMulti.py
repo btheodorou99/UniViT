@@ -73,3 +73,41 @@ class ImageDataset(Dataset):
             return image_tensor, label_tensor
         
         return image_tensor
+    
+class KNNDataset(Dataset):
+    def __init__(self, dataset, config, device, mod_list):
+        self.dataset = dataset
+        self.config = config
+        self.device = device
+        self.image_size = config.max_height
+        self.mod_list = mod_list
+        self.transform = transforms.Compose([
+            transforms.ToTensor(),
+        ])
+
+    def __len__(self):
+        return len(self.dataset)
+      
+    def load_image(self, image_path):
+        if image_path.endswith('.npy'):
+            img = torch.tensor(np.load(image_path), dtype=torch.float)
+            if len(img.shape) == 4:
+                img = img[:,:,:,0]
+            img = img[:, :, img.shape[2] // 2] # Take middle slice for 3D images
+            img = img.unsqueeze(0).repeat(3, 1, 1)
+        elif image_path.endswith('.jpg') or image_path.endswith('.png') or image_path.endswith('.tif'):
+            img = Image.open(image_path).convert('RGB')
+            img = self.transform(img)
+        else:
+            raise ValueError('Invalid image format')
+        
+        if img.shape[1] != self.image_size or img.shape[2] != self.image_size:
+            img = F.interpolate(img.unsqueeze(0), size=(self.image_size, self.image_size), mode='bilinear', align_corners=True).squeeze(0)
+
+        return img
+
+    def __getitem__(self, idx):
+        (path, _, _, _, _), mod = self.dataset[idx]
+        image_tensor = self.load_image(path)
+        label_tensor = torch.tensor(self.mod_list.index(mod), dtype=torch.long, device=self.device)   
+        return image_tensor, label_tensor
