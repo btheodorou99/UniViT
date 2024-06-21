@@ -22,6 +22,11 @@ device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu"
 if torch.cuda.is_available():
   torch.cuda.manual_seed_all(SEED)
 
+config.lr = 1e-5
+config.batch_size = 512
+config.max_height = 224
+config.patch_size = 14
+config.batch_size = 64
 data_dir = '/shared/bpt3/data/UniViT/data'
 save_dir = '/shared/bpt3/data/UniViT/save'
 train_data = pickle.load(open(f'{data_dir}/trainingDataset.pkl', 'rb'))
@@ -43,9 +48,9 @@ model = UniViT(config.max_height,
 optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr)
 model = model.to(device)
 
-if os.path.exists(f"{save_dir}/univit_noTimeNo3DNoMulti.pt"):
+if os.path.exists(f"{save_dir}/univit_noTimeNo3DNoMultiFreeze.pt"):
     print("Loading previous model")
-    checkpoint = torch.load(f'{save_dir}/univit_noTimeNo3DNoMulti.pt', map_location='cpu')
+    checkpoint = torch.load(f'{save_dir}/univit_noTimeNo3DNoMultiFreeze.pt', map_location='cpu')
     model.load_state_dict(checkpoint['model'])
     optimizer.load_state_dict(checkpoint['optimizer'])
     num_steps = checkpoint['steps']
@@ -91,6 +96,7 @@ pbar.update(num_steps)
 loss_plot = []
 center_cls = torch.zeros(1, config.projection_size).to(device)
 center_patch = torch.zeros(1, 1, config.projection_size).to(device)
+
 while num_steps < config.tot_steps:
     running_loss = []
     for batch_images in train_loader:
@@ -121,11 +127,16 @@ while num_steps < config.tot_steps:
         pbar.set_description(f'Current Loss: {np.mean(running_loss):.4f}')
         pbar.update(1)
         num_steps += 1
+        if num_steps == 2500:
+            model.cls_head.last_layer.weight.requires_grad_(False)
+            model.cls_head.last_layer.bias.requires_grad_(False)
+            model.embed_head.last_layer.weight.requires_grad_(False)
+            model.embed_head.last_layer.bias.requires_grad_(False)
         if num_steps % 1000 == 0:
             loss_plot.append(np.mean(running_loss))
-            torch.save({'model': model.state_dict(), 'optimizer': optimizer.state_dict(), 'steps': num_steps}, f'{save_dir}/univit_noTimeNo3DNoMulti.pt')
+            torch.save({'model': model.state_dict(), 'optimizer': optimizer.state_dict(), 'steps': num_steps}, f'{save_dir}/univit_noTimeNo3DNoMultiFreeze.pt')
         if num_steps >= config.tot_steps:
             break
   
 pbar.close()
-pickle.dump(loss_plot, open(f'{save_dir}/univit_noTimeNo3DNoMulti_loss_plot.pkl', 'wb'))
+pickle.dump(loss_plot, open(f'{save_dir}/univit_noTimeNo3DNoMultiFreeze_loss_plot.pkl', 'wb'))
