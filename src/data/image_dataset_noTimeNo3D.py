@@ -23,6 +23,21 @@ class ImageDataset(Dataset):
 
     def __len__(self):
         return len(self.dataset)
+    
+    def adjust_size(self, origDim):
+        if origDim[0] > self.config.max_height:
+            scale_factor_height = self.config.max_height / origDim[1]
+        else:
+            scale_factor_height = 1
+        if origDim[1] > self.config.max_width:
+            scale_factor_width = self.config.max_width / origDim[2]
+        else:
+            scale_factor_width = 1
+        
+        scale_factor_image = min(scale_factor_height, scale_factor_width)
+        newHeight = min(max(int(origDim[0] * scale_factor_image), MIN_RESOLUTION), self.config.max_height)
+        newWidth = min(max(int(origDim[1] * scale_factor_image), MIN_RESOLUTION), self.config.max_width)
+        return (newHeight, newWidth)
       
     def load_image(self, image_path, chosenDim):
         if image_path.endswith('.npy'):
@@ -37,20 +52,18 @@ class ImageDataset(Dataset):
         else:
             raise ValueError('Invalid image format')
         
-        if img.shape[1] > self.config.max_height:
-            scale_factor_height = self.config.max_height / img.shape[1]
-        else:
-            scale_factor_height = 1
-        if img.shape[2] > self.config.max_width:
-            scale_factor_width = self.config.max_width / img.shape[2]
-        else:
-            scale_factor_width = 1
-        
-        scale_factor_image = min(scale_factor_height, scale_factor_width)
-        if scale_factor_image < 1:
-            img = img.unsqueeze(0)
-            img = F.interpolate(img, scale_factor=(scale_factor_image, scale_factor_image), mode='bilinear', align_corners=True)
-            img = img.squeeze(0)
+        currDim = tuple(img[0, :, :].shape)
+        if chosenDim is not None and chosenDim != currDim:
+            if currDim[0] == chosenDim[1] and currDim[1] == chosenDim[0]:
+                img = img.permute(0, 2, 1)
+            elif (currDim[0] > chosenDim[0]) == (chosenDim[1] > currDim[1]) and (currDim[0] != chosenDim[0] and currDim[1] != chosenDim[1]):
+                img = img.permute(0, 2, 1).unsqueeze(0)
+                img = F.interpolate(img, size=(chosenDim[0], chosenDim[1]), mode='bilinear', align_corners=True)
+                img = img.squeeze(0)
+            else:
+                img = img.unsqueeze(0)
+                img = F.interpolate(img, size=(chosenDim[0], chosenDim[1]), mode='bilinear', align_corners=True)
+                img = img.squeeze(0)
 
         return img
     
@@ -96,6 +109,7 @@ class ImageDataset(Dataset):
 
     def __getitem__(self, idx):
         path, dim, _, _, labels = self.dataset[idx]
+        dim = self.adjust_size(dim)
         image_tensor = torch.zeros(self.config.num_channels, self.config.max_height, self.config.max_width, dtype=torch.float, device=self.device)
         dimension_tensor = torch.ones(2, dtype=torch.long)
         img = self.load_image(path, dim)

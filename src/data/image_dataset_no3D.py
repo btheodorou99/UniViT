@@ -25,6 +25,21 @@ class ImageDataset(Dataset):
 
     def __len__(self):
         return len(self.dataset)
+    
+    def adjust_size(self, origDim):
+        if origDim[0] > self.config.max_height:
+            scale_factor_height = self.config.max_height / origDim[1]
+        else:
+            scale_factor_height = 1
+        if origDim[1] > self.config.max_width:
+            scale_factor_width = self.config.max_width / origDim[2]
+        else:
+            scale_factor_width = 1
+        
+        scale_factor_image = min(scale_factor_height, scale_factor_width)
+        newHeight = min(max(int(origDim[0] * scale_factor_image), MIN_RESOLUTION), self.config.max_height)
+        newWidth = min(max(int(origDim[1] * scale_factor_image), MIN_RESOLUTION), self.config.max_width)
+        return (newHeight, newWidth)
       
     def load_image(self, image_path, chosenDim):
         if image_path.endswith('.npy'):
@@ -51,25 +66,8 @@ class ImageDataset(Dataset):
                 img = img.unsqueeze(0)
                 img = F.interpolate(img, size=(chosenDim[0], chosenDim[1]), mode='bilinear', align_corners=True)
                 img = img.squeeze(0)
-        
-        if img.shape[1] > self.config.max_height:
-            scale_factor_height = self.config.max_height / img.shape[1]
-        else:
-            scale_factor_height = 1
-        if img.shape[2] > self.config.max_width:
-            scale_factor_width = self.config.max_width / img.shape[2]
-        else:
-            scale_factor_width = 1
-        
-        scale_factor_image = min(scale_factor_height, scale_factor_width)
-        if scale_factor_image < 1:
-            img = img.unsqueeze(0)
-            img = F.interpolate(img, scale_factor=(scale_factor_image, scale_factor_image), mode='bilinear', align_corners=True)
-            img = img.squeeze(0)
 
         return img
-    
-    # dim is (time_steps, height, width)
     
     def random_crop(self, img, dim):
         crop_height = random.randint(int(dim[1] * MIN_CROP), img.shape[2])  # Adjust range as needed
@@ -148,6 +146,7 @@ class ImageDataset(Dataset):
             
         chosenDim = random.choice([dim for _, dim, _, _, _ in p])
         chosenDim = (chosenDim[1], chosenDim[2])
+        chosenDim = self.adjust_size(chosenDim)
         dimension_tensor[0] = len(p)
         for j, (path, _, _, _, labels) in enumerate(p):
             img = self.load_image(path, chosenDim)

@@ -32,7 +32,7 @@ train_data = ImageDataset(train_data, config, 'cpu')
 train_loader = DataLoader(train_data, batch_size=config.batch_size, shuffle=True, num_workers=config.num_workers)
 knn_data = {mod: random.choices(data, k=500) for (mod, data) in pickle.load(open(f'{data_dir}/tuningDataset.pkl', 'rb')).items()}
 knn_train_data = [(p, mod) for mod in knn_data for p in knn_data[mod][:450]]
-knn_test_data = [(p, mod) for mod in knn_data for p in knn_data[mod][450:]]
+knn_test_data = [(p, mod) for mod in knn_data for p in knn_data[mod][450:500]]
 mod_list = list(knn_data.keys())
 knn_train_data = KNNDataset(knn_train_data, config, 'cpu', mod_list)
 knn_test_data = KNNDataset(knn_test_data, config, 'cpu', mod_list)

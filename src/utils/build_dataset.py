@@ -163,7 +163,7 @@ for subject_id in tqdm(data, desc='Processing ADNI FDG PET'):
             dataset[subject_id].append((path, dimensions, note, modality, labels))
 
 # Process the DeepLesion dataset
-data = pd.read_csv(deep_lesion_dir + 'DL_info.csv', 'rb')
+data = pd.read_csv(deep_lesion_dir + 'DL_info.csv')
 for row in tqdm(data.itertuples(), total=len(data), desc='Processing DeepLesion'):
     path = f"{deep_lesion_dir}{'_'.join(row.File_name.split('_')[:-1])}.npy"
     slices = row.Slice_range.split(', ')

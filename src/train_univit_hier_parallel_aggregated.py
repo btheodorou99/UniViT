@@ -30,13 +30,13 @@ train_data = pickle.load(open(f'{data_dir}/trainingDataset.pkl', 'rb'))
 train_data = ImageDataset(train_data, config, 'cpu')
 train_loader = DataLoader(train_data, batch_size=config.batch_size, shuffle=True, num_workers=config.num_workers)
 knn_data = {mod: random.choices(data, k=500) for (mod, data) in pickle.load(open(f'{data_dir}/tuningDataset.pkl', 'rb')).items()}
-knn_train_data = [([p], mod) for mod in knn_data for p in knn_data[mod][:450]]
-knn_test_data = [([p], mod) for mod in knn_data for p in knn_data[mod][450:]]
+knn_train_data = [([p], mod) for mod in knn_data for p in knn_data[mod][:225]]
+knn_test_data = [([p], mod) for mod in knn_data for p in knn_data[mod][225:250]]
 mod_list = list(knn_data.keys())
 knn_train_data = KNNDataset(knn_train_data, config, 'cpu', mod_list)
 knn_test_data = KNNDataset(knn_test_data, config, 'cpu', mod_list)
-knn_train_loader = DataLoader(knn_train_data, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers)
-knn_test_loader = DataLoader(knn_test_data, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers)
+knn_train_loader = DataLoader(knn_train_data, batch_size=config.batch_size//len(cuda_list), shuffle=False, num_workers=config.num_workers)
+knn_test_loader = DataLoader(knn_test_data, batch_size=config.batch_size//len(cuda_list), shuffle=False, num_workers=config.num_workers)
 
 model = UniViT(config.max_height, 
                config.max_width, 
@@ -174,7 +174,7 @@ while num_steps < config.tot_steps:
             batch_loss = 0
             if num_steps % 1000 == 0:
                 loss_plot.append(np.mean(running_loss))
-                knn_acc = validate(model, knn_train_loader, knn_test_loader)
+                knn_acc = validate(model.module, knn_train_loader, knn_test_loader)
                 knn_plot.append(knn_acc)
                 torch.save({'model': model.module.state_dict(), 'optimizer': optimizer.state_dict(), 'steps': num_steps}, f'{save_dir}/univit_hier.pt')
             if num_steps >= config.tot_steps:

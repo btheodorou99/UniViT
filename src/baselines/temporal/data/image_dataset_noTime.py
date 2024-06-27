@@ -26,6 +26,25 @@ class ImageDataset(Dataset):
     def __len__(self):
         return len(self.dataset)
       
+    def adjust_size(self, origDim):
+        if origDim[0] > self.config.max_slice:
+            newSlice = self.config.max_slice
+        else:
+            newSlice = origDim[0]
+        if origDim[1] > self.config.max_height:
+            scale_factor_height = self.config.max_height / origDim[1]
+        else:
+            scale_factor_height = 1
+        if origDim[2] > self.config.max_width:
+            scale_factor_width = self.config.max_width / origDim[2]
+        else:
+            scale_factor_width = 1
+        
+        scale_factor_image = min(scale_factor_height, scale_factor_width)
+        newHeight = min(max(int(origDim[1] * scale_factor_image), MIN_RESOLUTION), self.config.max_height)
+        newWidth = min(max(int(origDim[2] * scale_factor_image), MIN_RESOLUTION), self.config.max_width)
+        return (newSlice, newHeight, newWidth)
+      
     def load_image(self, image_path, chosenDim):
         if image_path.endswith('.npy'):
             img = torch.tensor(np.load(image_path), dtype=torch.float)
@@ -39,41 +58,17 @@ class ImageDataset(Dataset):
             raise ValueError('Invalid image format')
         
         currDim = tuple(img[:, 0, :, :].shape)
-        if chosenDim is not None and chosenDim != currDim:
-            if currDim[1] == chosenDim[2] and currDim[2] == chosenDim[1]:
-                img = img.permute(0, 1, 3, 2)
-            elif (currDim[1] > chosenDim[1]) == (chosenDim[2] > currDim[2]) and (currDim[1] != chosenDim[1] and currDim[2] != chosenDim[2]):
-                img = img.permute(0, 1, 3, 2)
-                img = img.permute(1, 0, 2, 3).unsqueeze(0)
+        if currDim != chosenDim:
+            if currDim[1] == chosenDim[2] and currDim[2] == chosenDim[1] or (currDim[1] > chosenDim[1]) == (chosenDim[2] > currDim[2]) and (currDim[1] != chosenDim[1] and currDim[2] != chosenDim[2]):
+                img = img.permute(1, 0, 3, 2).unsqueeze(0)
                 img = F.interpolate(img, size=(chosenDim[0], chosenDim[1], chosenDim[2]), mode='trilinear', align_corners=True)
                 img = img.squeeze(0).permute(1, 0, 2, 3)
             else:
                 img = img.permute(1, 0, 2, 3).unsqueeze(0)
                 img = F.interpolate(img, size=(chosenDim[0], chosenDim[1], chosenDim[2]), mode='trilinear', align_corners=True)
                 img = img.squeeze(0).permute(1, 0, 2, 3)
-        
-        if img.shape[0] > self.config.max_slice:
-            scale_factor_slices = self.config.max_slice / img.shape[0]
-        else:
-            scale_factor_slices = 1
-        if img.shape[2] > self.config.max_height:
-            scale_factor_height = self.config.max_height / img.shape[2]
-        else:
-            scale_factor_height = 1
-        if img.shape[3] > self.config.max_width:
-            scale_factor_width = self.config.max_width / img.shape[3]
-        else:
-            scale_factor_width = 1
-        
-        scale_factor_image = min(scale_factor_height, scale_factor_width)
-        if min(scale_factor_image, scale_factor_slices) < 1:
-            img = img.permute(1, 0, 2, 3).unsqueeze(0)
-            img = F.interpolate(img, scale_factor=(scale_factor_slices, scale_factor_image, scale_factor_image), mode='trilinear', align_corners=True)
-            img = img.squeeze(0).permute(1, 0, 2, 3)
 
         return img
-    
-    # dim is (slices, height, width)
     
     def random_crop(self, img, dim):
         crop_height = random.randint(int(dim[2] * MIN_CROP), img.shape[2])  # Adjust range as needed
@@ -147,6 +142,7 @@ class ImageDataset(Dataset):
         p = self.dataset[idx]
         _, _, _, _, labels = p[-1]
         path, dim, _, _, _ = p[-2]
+        dim = self.adjust_size(dim)
         image_tensor = torch.zeros(self.config.max_slice, self.config.num_channels, self.config.max_height, self.config.max_width, dtype=torch.float, device=self.device)
         dimension_tensor = torch.ones(3, dtype=torch.long)
         img = self.load_image(path, dim)

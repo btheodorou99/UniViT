@@ -6,13 +6,13 @@
 class Config(object):
     def __init__(
             self,
-            max_height=384,
-            max_width=384,
+            max_height=224,
+            max_width=224,
             max_time=5,
             max_slice=5,
             num_channels=3,
             
-            patch_size=24,
+            patch_size=14,
             representation_size=768,
             
             num_layers=12,
@@ -31,8 +31,8 @@ class Config(object):
             
             batch_size=8,
             effective_batch_size=64,
-            lr=5e-4,
-            lr_rampup=5000,
+            lr=1e-5,
+            lr_rampup=10000,
             tot_steps=500000,
             num_workers=8,
             
