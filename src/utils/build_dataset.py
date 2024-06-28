@@ -116,6 +116,7 @@ for row in tqdm(df.itertuples(), total=len(df), desc='Processing ISIC'):
 adni_labels = pd.read_csv(adni_dir + 'DXSUM_PDXCONV.csv')
 adni_labels = {row.PTID: row.DIAGNOSIS for row in adni_labels.itertuples()}
 adni_labels = {p: int(l - 1) if l == l else 0 for p, l in adni_labels.items()}
+# LABELS: CN=0, MCI=1, AD=2
 
 # Process the ADNI MRI dataset
 data = pickle.load(open(adni_dir + 'mri_data.pkl', 'rb'))
