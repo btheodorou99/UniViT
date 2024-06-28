@@ -19,7 +19,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 5
+cuda_num = 0
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
   torch.cuda.manual_seed_all(SEED)
@@ -129,6 +129,7 @@ for task in tune_data:
         f1 = metrics.f1_score(task_labels, task_preds, average='macro')
         taskResults = {'Accuracy': acc, 'F1': f1}
         print(taskResults)
-        
+       
+    raise Exception
     allResults[task] = taskResults
 pickle.dump(allResults, open(f'{save_dir}/{model_key}_downstreamResults.pkl', 'wb'))

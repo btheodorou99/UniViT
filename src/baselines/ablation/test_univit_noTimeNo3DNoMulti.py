@@ -11,7 +11,7 @@ from src.models.univit_noTimeNo3DNoMulti import UniViT
 from src.data.image_dataset_noTimeNo3DNoMulti import ImageDataset
 from src.models.downstream import DownstreamModel
 
-model_key = 'univit_noTimeNo3DNoMultiFix2'
+model_key = 'univit_noTimeNo3DNoMultiFreeze'
 
 SEED = 4
 random.seed(SEED)
@@ -19,7 +19,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 6
+cuda_num = 0
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
   torch.cuda.manual_seed_all(SEED)
