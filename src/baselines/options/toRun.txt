@@ -1,0 +1,4 @@
+maskPos
+maskType
+patchCoherence
+patchCoherenceMasked

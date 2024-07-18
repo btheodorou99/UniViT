@@ -20,14 +20,14 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 0
+cuda_num = 5
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
   torch.cuda.manual_seed_all(SEED)
 
 config.batch_size = config.effective_batch_size
-data_dir = '/shared/bpt3/data/UniViT/data'
-save_dir = '/shared/bpt3/data/UniViT/save'
+data_dir = '/shared/eng/bpt3/data/UniViT/data'
+save_dir = '/shared/eng/bpt3/data/UniViT/save'
 save_dir = '/srv/local/data/bpt3/UniViT/save'
 train_data = pickle.load(open(f'{data_dir}/trainingDataset.pkl', 'rb'))
 train_data = ImageDataset(train_data, config, 'cpu')
@@ -165,8 +165,8 @@ while num_steps < config.tot_steps:
         batch_images1, batch_dimensions1 = train_data.augment_batch(batch_images, batch_dimensions)
         batch_images2, batch_dimensions2 = train_data.augment_batch(batch_images, batch_dimensions)
         
-        cls_model1, embd_seq_model1, pos_out_model1, mask1, orig_mask1, pos_mask1 = model(batch_images1.to(device), batch_dimensions1.to(device), train=True, seqMask=True, posOutput=True, posMask=True)
-        cls_model2, embd_seq_model2, pos_out_model2, mask2, orig_mask2, pos_mask2 = model(batch_images2.to(device), batch_dimensions2.to(device), train=True, seqMask=True, posOutput=True, posMask=True)
+        cls_model1, embd_seq_model1, pos_out_model1, mask1, orig_mask1, pos_mask1 = model(batch_images1.to(device), batch_dimensions1.to(device), train=True, seqMask=True, posOutputs=True, posMask=True)
+        cls_model2, embd_seq_model2, pos_out_model2, mask2, orig_mask2, pos_mask2 = model(batch_images2.to(device), batch_dimensions2.to(device), train=True, seqMask=True, posOutputs=True, posMask=True)
         with torch.no_grad():
             cls_teacher1, embd_seq_teacher1, _, _ = teacher_model(batch_images1.to(device), batch_dimensions1.to(device), seqMask=False, train=True)
             cls_teacher1 = cls_teacher1.to(device)

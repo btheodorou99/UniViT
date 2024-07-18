@@ -331,7 +331,7 @@ class UniViT(nn.Module):
             norm_layer,
         )
         self.seq_length = seq_length
-            
+
         self.cls_head = ProjectionHead(representation_size, projection_size)
         self.embed_head = ProjectionHead(representation_size, projection_size)
         self.swap_prob = 0.2
@@ -390,12 +390,13 @@ class UniViT(nn.Module):
                 temp = pos_emb[b, indices_a].clone()
                 pos_emb[b, indices_a], pos_emb[b, indices_b] = pos_emb[b, indices_b], temp
         elif adversarialPos is not None:
-            pos_mask = torch.rand_like(bs, seq_len, 1, dtype=torch.float) < self.mask_prob
+            pos_emb = pos_emb.unsqueeze(0).repeat(bs, 1, 1)
+            pos_mask = torch.rand(bs, seq_len, dtype=torch.float, device=pos_emb.device) < self.mask_prob
             pos_emb[pos_mask] = adversarialPos(pos_emb[pos_mask])
         
         x = x + pos_emb
         if adversarialPatch is not None:
-            patch_mask = torch.rand_like(bs, seq_len, 1, dtype=torch.float) < self.mask_prob
+            patch_mask = torch.rand(bs, seq_len, dtype=torch.float, device=x.device) < self.mask_prob
             x[patch_mask] = adversarialPatch(x[patch_mask])
         
         return x, mask
@@ -413,11 +414,11 @@ class UniViT(nn.Module):
         mask = mask.reshape(bs, seq_len)
         
         # Add positional embeddings
-        pos_indices = torch.arange(self.seq_length, device=x.device)
+        pos_indices = torch.arange(self.seq_length - 1, device=x.device)
         pos_emb = self.pos_embedding(pos_indices)
         
         pos_mask = torch.rand_like(mask, dtype=torch.float) < self.mask_prob
-        pos_emb = pos_emb * (1 - pos_mask.reshape(bs, seq_len, 1))
+        pos_emb = pos_emb.unsqueeze(0).repeat(bs, 1, 1) * ~pos_mask.unsqueeze(-1)
         
         x = x + pos_emb
         return x, mask, pos_mask

@@ -25,8 +25,8 @@ if torch.cuda.is_available():
   torch.cuda.manual_seed_all(SEED)
 
 config.batch_size = config.effective_batch_size
-data_dir = '/shared/bpt3/data/UniViT/data'
-save_dir = '/shared/bpt3/data/UniViT/save'
+data_dir = '/shared/eng/bpt3/data/UniViT/data'
+save_dir = '/shared/eng/bpt3/data/UniViT/save'
 save_dir = '/srv/local/data/bpt3/UniViT/save'
 train_data = pickle.load(open(f'{data_dir}/trainingDataset.pkl', 'rb'))
 train_data = ImageDataset(train_data, config, 'cpu')
@@ -54,7 +54,7 @@ model = UniViT(config.max_height,
                config.dropout, 
                config.attention_dropout,
                config.mask_prob)
-adversarial = Permutation(config.representation_size, config.representation_size, config.representation_size)
+adversarial = Permutation(config.representation_size).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
 model = model.to(device)
 adv_optimizer = torch.optim.Adam(adversarial.parameters(), lr=config.lr)
@@ -160,9 +160,12 @@ while num_steps < config.tot_steps:
         momentum_val = 1.0 + 0.5 * (config.momentum - 1.0) * (1 + np.cos(np.pi * num_steps / config.tot_steps))
         
         adv_optimizer.zero_grad()
+        with torch.no_grad():
+            cls_model1 = model.embed(batch_images1.to(device), batch_dimensions1.to(device), train=True)
+            cls_model2 = model.embed(batch_images2.to(device), batch_dimensions2.to(device), train=True)
         adv_cls_model1 = model.embed(batch_images1.to(device), batch_dimensions1.to(device), train=True, adversarialPos=adversarial)
         adv_cls_model2 = model.embed(batch_images2.to(device), batch_dimensions2.to(device), train=True, adversarialPos=adversarial)
-        adv_loss_cls = - (cls_loss_fn(adv_cls_model1, cls_teacher1) + cls_loss_fn(adv_cls_model2, cls_teacher2)) / 2
+        adv_loss_cls = - (cls_loss_fn(adv_cls_model1, cls_model1, center_cls) + cls_loss_fn(adv_cls_model2, cls_model2, center_cls)) / 2
         adv_loss_cls.backward()
         adv_optimizer.step()
         

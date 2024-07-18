@@ -25,8 +25,8 @@ if torch.cuda.is_available():
 
 config.downstream_batch_size = config.downstream_effective_batch_size
 batches_per_step = config.downstream_effective_batch_size // config.downstream_batch_size
-data_dir = '/shared/bpt3/data/UniViT/data'
-save_dir = '/shared/bpt3/data/UniViT/save'
+data_dir = '/shared/eng/bpt3/data/UniViT/data'
+save_dir = '/shared/eng/bpt3/data/UniViT/save'
 
 tune_data = pickle.load(open(f'{data_dir}/tuningDataset.pkl', 'rb'))
 tune_data = {task: [[p] for p in tune_data[task] if p[4] is not None] for task in tune_data}

@@ -18,14 +18,14 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 0
+cuda_num = 5
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
   torch.cuda.manual_seed_all(SEED)
 
 config.batch_size = config.effective_batch_size
-data_dir = '/shared/bpt3/data/UniViT/data'
-save_dir = '/shared/bpt3/data/UniViT/save'
+data_dir = '/shared/eng/bpt3/data/UniViT/data'
+save_dir = '/shared/eng/bpt3/data/UniViT/save'
 save_dir = '/srv/local/data/bpt3/UniViT/save'
 train_data = pickle.load(open(f'{data_dir}/trainingDataset.pkl', 'rb'))
 train_data = ImageDataset(train_data, config, 'cpu')

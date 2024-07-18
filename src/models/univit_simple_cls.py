@@ -2,11 +2,11 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ..ops.misc import MLP
+from torchvision.ops import MLP
 from functools import partial
 from collections import OrderedDict
-from typing import Callable, Optional, Tuple
 from torch.nn.modules.utils import _quadruple
+from typing import Callable, Optional, Tuple, Union
 
 class Conv4d(nn.Module):
     def __init__(self,
@@ -129,9 +129,9 @@ class Conv4d(nn.Module):
             out = out + self.bias.view(1, -1, 1, 1, 1, 1)
 
         return out
-    
+
 class MaskedSequential(nn.Module):
-    def __init__(self, *args):
+    def __init__(self, args):
         super().__init__()
         self.modules_list = nn.ModuleList(args)
 
@@ -247,7 +247,7 @@ class Encoder(nn.Module):
                 attention_dropout,
                 norm_layer,
             )
-        self.layers = MaskedSequential(layers)
+        self.layers = MaskedSequential(layers.values())
         self.ln = norm_layer(hidden_dim)
 
     def forward(self, input: torch.Tensor, mask: Optional[torch.Tensor] = None):
@@ -339,7 +339,7 @@ class UniViT(nn.Module):
         self.embed_head = ProjectionHead(representation_size, projection_size)
         self.swap_prob = 0.2
         if clsExtraHead:
-            self.cls_extra_head = nn.Sequential(nn.Linear(representation_size, representation_size), nn.ReLU(), nn.Linear(representation_size, representation_size))
+            self.cls_extra_head = ProjectionHead(representation_size, projection_size)
 
     def _process_input(self, x: torch.Tensor) -> torch.Tensor:
         b, t, s, c, h, w = x.shape
@@ -372,8 +372,8 @@ class UniViT(nn.Module):
         
         # Generate mask based on dimensions
         mask = torch.zeros((bs, patch_height, patch_width), dtype=torch.bool, device=x.device)
-        time_cls_mask = torch.zeros((bs, self.image_time), dtype=torch.bool)
-        slice_cls_mask = torch.zeros((bs, self.image_slice), dtype=torch.bool)
+        time_cls_mask = torch.zeros((bs, self.image_time), dtype=torch.bool, device=x.device)
+        slice_cls_mask = torch.zeros((bs, self.image_slice), dtype=torch.bool, device=x.device)
         for i in range(bs):
             mask[i, math.ceil(dimensions[i,2] / self.patch_size):, :] = True
             mask[i, :, math.ceil(dimensions[i,3] / self.patch_size):] = True
@@ -382,7 +382,7 @@ class UniViT(nn.Module):
         mask = mask.reshape(bs, seq_len)
         
         # Add positional embeddings
-        pos_indices = torch.arange(self.seq_length - 1, device=x.device)
+        pos_indices = torch.arange(self.seq_length - 1 - self.image_slice - self.image_time, device=x.device)
         pos_emb = self.pos_embedding(pos_indices)
         
         if swapPos:
@@ -439,8 +439,8 @@ class UniViT(nn.Module):
         # Expand the class token to the full batch
         batch_class_token = self.class_token.expand(bs, -1, -1)
         batch_class_mask = torch.zeros(bs, 1).bool().to(x.device)
-        batch_time_class_tokens = self.time_class_tokens.expand(bs, -1, -1)
-        batch_slice_class_tokens = self.slice_class_tokens.expand(bs, -1, -1)
+        batch_time_class_tokens = self.time_class_tokens.expand(bs, -1, -1).to(x.device)
+        batch_slice_class_tokens = self.slice_class_tokens.expand(bs, -1, -1).to(x.device)
         x = torch.cat([batch_class_token, batch_time_class_tokens, batch_slice_class_tokens, x], dim=1)
         encoder_mask = torch.cat([batch_class_mask, time_mask, slice_mask, orig_mask], dim=1)
 
@@ -449,7 +449,7 @@ class UniViT(nn.Module):
         if train:
             cls, x = x[:, 0], x[:, 1:]
             if extraCls:
-                return self.cls_head(cls), self.embed_head(x), self.cls_extra_head(x), x, mask, orig_mask, time_mask, slice_mask
+                return self.cls_head(cls), self.embed_head(x), self.cls_extra_head(x), mask, orig_mask, time_mask, slice_mask
             
             return self.cls_head(cls), self.embed_head(x), mask, orig_mask, time_mask, slice_mask
         

@@ -36,7 +36,7 @@ class Config(object):
             tot_steps=500000,
             num_workers=8,
             
-            downstream_epochs=5,
+            downstream_epochs=5, # 10 TODO: Linear Probing
             downstream_batch_size=4,
             downstream_effective_batch_size=64,
             downstream_lr=1e-3,

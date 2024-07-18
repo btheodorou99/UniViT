@@ -37,8 +37,8 @@ def labelData(p):
         labels.append('2D')
     return labels
 
-data_dir = '/shared/bpt3/data/UniViT/data'
-save_dir = '/shared/bpt3/data/UniViT/save'
+data_dir = '/shared/eng/bpt3/data/UniViT/data'
+save_dir = '/shared/eng/bpt3/data/UniViT/save'
 visualization_data = pickle.load(open(f'{data_dir}/visualizationDataset.pkl', 'rb'))
 labels = [labelData(p) for p in visualization_data]
 

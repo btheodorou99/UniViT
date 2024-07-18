@@ -24,8 +24,8 @@ device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu"
 if torch.cuda.is_available():
   torch.cuda.manual_seed_all(SEED)
 
-data_dir = '/shared/bpt3/data/UniViT/data'
-save_dir = '/shared/bpt3/data/UniViT/save'
+data_dir = '/shared/eng/bpt3/data/UniViT/data'
+save_dir = '/shared/eng/bpt3/data/UniViT/save'
 tune_data = pickle.load(open(f'{data_dir}/tuningDataset.pkl', 'rb'))
 tune_data = {task: [p for p in tune_data[task] if p[4] is not None] for task in tune_data}
 test_data = pickle.load(open(f'{data_dir}/testingDataset.pkl', 'rb'))
@@ -53,11 +53,14 @@ for task in tune_data:
     print(f'\n\nDownstream Evaluation on {task}')
     task_tune = tune_data[task]
     label = task_tune[0][4]
+    print(len(task_tune))
     if isinstance(label, list):
         label_size = len(label)
         multiclass = False
     else:
         label_size = len(set([p[4] for p in task_tune]))
+        print(label_size)
+        print(set([p[4] for p in task_tune]))
         multiclass = True
     task_tune_data = ImageDataset(task_tune, config, 'cpu', augment=False, downstream=True, multiclass=multiclass)
     task_tune_loader = DataLoader(task_tune_data, batch_size=config.downstream_batch_size, shuffle=True, num_workers=config.num_workers)
@@ -126,6 +129,6 @@ for task in tune_data:
         taskResults = {'Accuracy': acc, 'F1': f1}
         print(taskResults)
         
-    raise Exception
+    # raise Exception
     allResults[task] = taskResults
-pickle.dump(allResults, open(f'{save_dir}/{model_key}_downstreamResults.pkl', 'wb'))
+# pickle.dump(allResults, open(f'{save_dir}/{model_key}_downstreamResults.pkl', 'wb'))

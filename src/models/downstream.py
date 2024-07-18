@@ -13,3 +13,12 @@ class DownstreamModel(nn.Module):
     x = torch.relu(self.fc2(x))
     x = self.fc3(x)
     return x
+
+# TODO: Linear Probing
+# class DownstreamModel(nn.Module):
+#   def __init__(self, input_dim, output_dim):
+#     super(DownstreamModel, self).__init__()
+#     self.fc = nn.Linear(input_dim, output_dim)
+
+#   def forward(self, x):
+#     return self.fc(x)

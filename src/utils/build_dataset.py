@@ -1,6 +1,6 @@
 from sklearn.model_selection import train_test_split
 from transformers import AutoTokenizer
-from collections import defaultdict
+from collections import Counter
 from PIL import Image
 from tqdm import tqdm
 import pandas as pd
@@ -8,7 +8,7 @@ import pickle
 import os
 
 # Set the output directory
-data_dir = '/shared/bpt3/data/UniViT/data/'
+data_dir = '/shared/eng/bpt3/data/UniViT/data/'
 os.makedirs(data_dir, exist_ok=True)
 
 # Load the tokenizer
@@ -171,7 +171,7 @@ for row in tqdm(data.itertuples(), total=len(data), desc='Processing DeepLesion'
     image_size = row.Image_size.split(', ')
     dimensions = (int(slices[1]) - int(slices[0]) + 1, int(image_size[0]), int(image_size[1]))
     note = [t - 100 for t in tokenizer.encode(f'CT scan of a {row.Patient_age} year old {"male" if row.Patient_gender == "M" else "female"} patient with a lesion')]
-    labels = row.Coarse_lesion_type if row.Coarse_lesion_type != -1 else None
+    labels = row.Coarse_lesion_type - 1 if row.Coarse_lesion_type != -1 else None
     subject_id = f'DL_{row.Patient_index}'
     modality = 'CT'
     if subject_id not in dataset:
@@ -189,7 +189,7 @@ for top_dir in os.listdir(covid_cxr_dir):
                     dimensions = Image.open(path).size
                     dimensions = (1, dimensions[1], dimensions[0])
                     note = [t - 100 for t in tokenizer.encode(f'Chest X-Ray of a {cls} patient')]
-                    labels = 0 if cls == 'normal' else 1 if cls == 'pneumonia' else 2
+                    labels = 0 if cls == 'COVID-19' else 1 if cls == 'Non-COVID' else 2
                     subject_id = path.split('/')[-1].split('_')[0] if 'sub-' in path else path 
                     modality = 'Chest X-Ray (COVID-QU-Ex)'
                     if subject_id not in dataset:
@@ -228,8 +228,17 @@ for cls in os.listdir(crc_he_dir2):
         else:
             dataset[subject_id].append((path, dimensions, note, modality, labels))
 
-# Split the dataset
 dataset = list(dataset.values())
+for m in ['Chest X-Ray (MIMIC)', 'Chest X-Ray (CheXpert)', 'Skin Lesion', 'MRI', 'Amyloid PET', 'FDG PET', 'CT', 'Chest X-Ray (COVID-QU-Ex)', 'Histopathology']:
+    print(m)
+    d = [p for p in data if p[0][3] == m]
+    print(len(d))
+    print(len([v for p in d for v in p]))
+    print(max([len(p) for p in d]))
+    print(Counter([v[1] for p in d for v in p]).most_common(10))
+    print()
+    
+# Split the dataset
 train, test = train_test_split(dataset, test_size=0.2, random_state=4)
 tune, test = train_test_split(test, test_size=0.5, random_state=4)
 visualization = tune + test

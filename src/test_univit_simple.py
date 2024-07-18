@@ -19,13 +19,13 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 0
+cuda_num = 1
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
   torch.cuda.manual_seed_all(SEED)
 
-data_dir = '/shared/bpt3/data/UniViT/data'
-save_dir = '/shared/bpt3/data/UniViT/save'
+data_dir = '/shared/eng/bpt3/data/UniViT/data'
+save_dir = '/shared/eng/bpt3/data/UniViT/save'
 tune_data = pickle.load(open(f'{data_dir}/tuningDataset.pkl', 'rb'))
 tune_data = {task: [[p] for p in tune_data[task] if p[4] is not None] for task in tune_data}
 test_data = pickle.load(open(f'{data_dir}/testingDataset.pkl', 'rb'))
@@ -52,7 +52,9 @@ model.eval()
 model.requires_grad_(False)
 
 allResults = {}
-for task in tune_data:
+tasks = ['Chest X-Ray (MIMIC)', 'Skin Lesion', 'MRI', 'Amyloid PET', 'FDG PET']
+# for task in tune_data:
+for task in tasks:
     print(f'\n\nDownstream Evaluation on {task}')
     task_tune = tune_data[task]
     label = task_tune[0][0][4]
@@ -82,6 +84,7 @@ for task in tune_data:
     
     downstream = DownstreamModel(config.representation_size, label_size).to(device)
     optimizer = torch.optim.Adam(downstream.parameters(), lr=config.downstream_lr)
+    # optimizer = torch.optim.SGD(downstream.parameters(), lr=config.downstream_lr, momentum=0.9, weight_decay=0) TODO: Linear Probing
     for epoch in tqdm(range(config.downstream_epochs), leave=False, desc=f'{task} Tuning'):
         batches_since_step = 0
         for batch_images, batch_dimensions, batch_labels in tqdm(task_tune_loader, desc=f'{task} Tuning Epoch {epoch+1}', leave=False):
@@ -129,6 +132,6 @@ for task in tune_data:
         taskResults = {'Accuracy': acc, 'F1': f1}
         print(taskResults)
         
-    raise Exception
+    # raise Exception
     allResults[task] = taskResults
-pickle.dump(allResults, open(f'{save_dir}/{model_key}_downstreamResults.pkl', 'wb'))
+# pickle.dump(allResults, open(f'{save_dir}/{model_key}_downstreamResults.pkl', 'wb'))

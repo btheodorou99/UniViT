@@ -264,7 +264,7 @@ class UniViT(nn.Module):
         return x
     
     def _prepare_sequence(self, x: torch.Tensor, dimensions: torch.Tensor, swapPos: bool = False, adversarialPos = None, adversarialPatch = None) -> Tuple[torch.Tensor, torch.Tensor]:
-        bs, _, _ = x.shape
+        bs, _ = dimensions.shape
         patch_height = self.image_height // self.patch_size
         patch_width = self.image_width // self.patch_size
 

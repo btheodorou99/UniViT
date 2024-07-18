@@ -24,8 +24,8 @@ if torch.cuda.is_available():
   torch.cuda.manual_seed_all(SEED)
 
 batches_per_step = config.effective_batch_size // config.batch_size
-data_dir = '/shared/bpt3/data/UniViT/data'
-save_dir = '/shared/bpt3/data/UniViT/save'
+data_dir = '/shared/eng/bpt3/data/UniViT/data'
+save_dir = '/shared/eng/bpt3/data/UniViT/save'
 train_data_all = pickle.load(open(f'{data_dir}/trainingDataset.pkl', 'rb'))
 
 for modality in ['Chest X-Ray (MIMIC)', 'Chest X-Ray (CheXpert)', 'Skin Lesion', 'MRI', 'Amyloid PET', 'FDG PET', ]:

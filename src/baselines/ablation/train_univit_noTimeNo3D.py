@@ -23,8 +23,8 @@ if torch.cuda.is_available():
   torch.cuda.manual_seed_all(SEED)
 
 config.batch_size = config.effective_batch_size
-data_dir = '/shared/bpt3/data/UniViT/data'
-save_dir = '/shared/bpt3/data/UniViT/save'
+data_dir = '/shared/eng/bpt3/data/UniViT/data'
+save_dir = '/shared/eng/bpt3/data/UniViT/save'
 train_data = pickle.load(open(f'{data_dir}/trainingDataset.pkl', 'rb'))
 train_data = [v for p in train_data for v in p]
 train_data = ImageDataset(train_data, config, 'cpu')

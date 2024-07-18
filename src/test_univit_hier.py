@@ -24,8 +24,8 @@ device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu"
 if torch.cuda.is_available():
   torch.cuda.manual_seed_all(SEED)
 
-data_dir = '/shared/bpt3/data/UniViT/data'
-save_dir = '/shared/bpt3/data/UniViT/save'
+data_dir = '/shared/eng/bpt3/data/UniViT/data'
+save_dir = '/shared/eng/bpt3/data/UniViT/save'
 tune_data = pickle.load(open(f'{data_dir}/tuningDataset.pkl', 'rb'))
 tune_data = {task: [[p] for p in tune_data[task] if p[4] is not None] for task in tune_data}
 test_data = pickle.load(open(f'{data_dir}/testingDataset.pkl', 'rb'))
@@ -53,7 +53,11 @@ model.eval()
 model.requires_grad_(False)
 
 allResults = {}
-for task in tune_data:
+tasks = ['Chest X-Ray (MIMIC)', 'Skin Lesion', 'MRI', 'Amyloid PET', 'FDG PET']
+# for task in tune_data:
+for task in tasks:
+    if 'Chest' in task:
+        continue
     print(f'\n\nDownstream Evaluation on {task}')
     task_tune = tune_data[task]
     label = task_tune[0][0][4]
@@ -130,6 +134,6 @@ for task in tune_data:
         taskResults = {'Accuracy': acc, 'F1': f1}
         print(taskResults)
        
-    raise Exception
+    # raise Exception
     allResults[task] = taskResults
-pickle.dump(allResults, open(f'{save_dir}/{model_key}_downstreamResults.pkl', 'wb'))
+# pickle.dump(allResults, open(f'{save_dir}/{model_key}_downstreamResults.pkl', 'wb'))

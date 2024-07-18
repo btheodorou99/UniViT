@@ -18,14 +18,14 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 0
+cuda_num = 7
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
   torch.cuda.manual_seed_all(SEED)
 
 config.batch_size = config.effective_batch_size
-data_dir = '/shared/bpt3/data/UniViT/data'
-save_dir = '/shared/bpt3/data/UniViT/save'
+data_dir = '/shared/eng/bpt3/data/UniViT/data'
+save_dir = '/shared/eng/bpt3/data/UniViT/save'
 save_dir = '/srv/local/data/bpt3/UniViT/save'
 train_data = pickle.load(open(f'{data_dir}/trainingDataset.pkl', 'rb'))
 train_data = ImageDataset(train_data, config, 'cpu')
@@ -98,6 +98,7 @@ def update_centers(center_cls, center_patch, cls1, cls2, embd_seq1, embd_seq2):
     return center_cls, center_patch
 
 def framePred_loss_fn(time_pred, slice_pred, time_seq, slice_seq, time_mask, slice_mask):
+    # torch.Size([64, 5, 768]) torch.Size([64, 5, 768]) torch.Size([64, 5, 8192]) torch.Size([64, 5, 8192]) torch.Size([64, 5]) torch.Size([64, 5])
     time_pred = F.log_softmax(time_pred / config.student_temp, dim=-1)
     slice_pred = F.log_softmax(slice_pred / config.student_temp, dim=-1)
     time_seq = F.softmax(time_seq / config.teacher_patch_temp, dim=-1)
@@ -105,9 +106,13 @@ def framePred_loss_fn(time_pred, slice_pred, time_seq, slice_seq, time_mask, sli
     time_loss = torch.sum(-time_seq[:, 1:] * time_pred[:, :-1], dim=-1)
     time_loss = torch.sum(time_loss * (~time_mask[:, 1:]), dim=-1) / (~time_mask[:, 1:]).sum(dim=-1).clamp(min=1.0)
     time_loss = time_loss.mean()
+    if time_loss.isnan():
+        time_loss = torch.tensor(0.0).to(device)
     slice_loss = torch.sum(-slice_seq[:, 1:] * slice_pred[:, :-1], dim=-1)
     slice_loss = torch.sum(slice_loss * (~slice_mask[:, 1:]), dim=-1) / (~slice_mask[:, 1:]).sum(dim=-1).clamp(min=1.0)
     slice_loss = slice_loss.mean()
+    if slice_loss.isnan():
+        slice_loss = torch.tensor(0.0).to(device)
     loss = time_loss + slice_loss
     return loss
     
@@ -154,28 +159,29 @@ while num_steps < config.tot_steps:
         
         cls_model1, embd_seq_model1, pred_seq_model1, mask1, orig_mask1, time_mask1, slice_mask1 = model(batch_images1.to(device), batch_dimensions1.to(device), seqMask=True, train=True, extraCls=True)
         cls_model2, embd_seq_model2, pred_seq_model2, mask2, orig_mask2, time_mask2, slice_mask2 = model(batch_images2.to(device), batch_dimensions2.to(device), seqMask=True, train=True, extraCls=True)
-        time_seq_model1 = embd_seq_model1[:, :config.max_time]
         time_pred_model1 = pred_seq_model1[:, :config.max_time]
-        slice_seq_model1 = embd_seq_model1[:, config.max_time:config.max_time + config.max_slice]
         slice_pred_model1 = pred_seq_model1[:, config.max_time:config.max_time + config.max_slice]
         embd_seq_model1 = embd_seq_model1[:, config.max_time + config.max_slice:]
-        time_seq_model2 = embd_seq_model2[:, :config.max_time]
         time_pred_model2 = pred_seq_model2[:, :config.max_time]
-        slice_seq_model2 = embd_seq_model2[:, config.max_time:config.max_time + config.max_slice]
         slice_pred_model2 = pred_seq_model2[:, config.max_time:config.max_time + config.max_slice]
         embd_seq_model2 = embd_seq_model2[:, config.max_time + config.max_slice:]
         with torch.no_grad():
-            cls_teacher1, embd_seq_teacher1, _, _ = teacher_model(batch_images1.to(device), batch_dimensions1.to(device), seqMask=False, train=True)
+            cls_teacher1, embd_seq_teacher1, _, _, _, _ = teacher_model(batch_images1.to(device), batch_dimensions1.to(device), seqMask=False, train=True)
             cls_teacher1 = cls_teacher1.to(device)
             embd_seq_teacher1 = embd_seq_teacher1.to(device)
-            cls_teacher2, embd_seq_teacher2, _, _ = teacher_model(batch_images2.to(device), batch_dimensions2.to(device), seqMask=False, train=True)
+            time_seq_teacher1 = embd_seq_teacher1[:, :config.max_time]
+            slice_seq_teacher1 = embd_seq_teacher1[:, config.max_time:config.max_time + config.max_slice]
+            embd_seq_teacher1 = embd_seq_teacher1[:, config.max_time + config.max_slice:]
+            cls_teacher2, embd_seq_teacher2, _, _, _, _ = teacher_model(batch_images2.to(device), batch_dimensions2.to(device), seqMask=False, train=True)
             cls_teacher2 = cls_teacher2.to(device)
             embd_seq_teacher2 = embd_seq_teacher2.to(device)
-            embd_seq_teacher, _, _ = embd_seq_teacher[:, config.max_time + config.max_slice:]
+            time_seq_teacher2 = embd_seq_teacher2[:, :config.max_time]
+            slice_seq_teacher2 = embd_seq_teacher2[:, config.max_time:config.max_time + config.max_slice]
+            embd_seq_teacher2 = embd_seq_teacher2[:, config.max_time + config.max_slice:]
             
         loss_cls = (cls_loss_fn(cls_model1, cls_teacher2, center_cls) + cls_loss_fn(cls_model2, cls_teacher1, center_cls)) / 2
         loss_mim = (mim_loss_fn(embd_seq_model1, embd_seq_teacher1, center_patch, mask1 & ~orig_mask1) + mim_loss_fn(embd_seq_model2, embd_seq_teacher2, center_patch, mask2 & ~orig_mask2)) / 2
-        loss_framePred = (framePred_loss_fn(time_pred_model1, slice_pred_model1, time_seq_model1, slice_seq_model1, time_mask1, slice_mask1) + framePred_loss_fn(time_pred_model2, slice_pred_model2, time_seq_model2, slice_seq_model2, time_mask2, slice_mask2)) / 2
+        loss_framePred = (framePred_loss_fn(time_pred_model1, slice_pred_model1, time_seq_teacher1, slice_seq_teacher1, time_mask1, slice_mask1) + framePred_loss_fn(time_pred_model2, slice_pred_model2, time_seq_teacher2, slice_seq_teacher2, time_mask2, slice_mask2)) / 2
         loss = loss_cls + loss_mim + loss_framePred
         loss.backward()
         optimizer.step()
