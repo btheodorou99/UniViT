@@ -332,6 +332,7 @@ class UniViT(nn.Module):
             slice_emb[pos_slice_mask] = adversarialPos(slice_emb[pos_slice_mask])
             pos_time_mask = torch.rand_like(time_mask, dtype=torch.float) < self.mask_prob
             time_emb[pos_time_mask] = adversarialPos(time_emb[pos_time_mask])
+        
 
         if adversarialPatch is not None:
             patch_mask = torch.rand_like(x, dtype=torch.float) < self.mask_prob
@@ -387,7 +388,7 @@ class UniViT(nn.Module):
         return image_mask, slice_mask, time_mask, image_emb, slice_emb, time_emb, pos_image_mask, pos_slice_mask, pos_time_mask
     
     def _mask_sequence(self, x: torch.Tensor, dim: torch.Tensor, patchMask: bool = False) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        bs, _, _ = x.shape
+        bs, _ = dim.shape
         if patchMask:
             image_mask = torch.zeros((bs * self.image_time * self.image_slice, (self.image_height // self.patch_size), (self.image_width // self.patch_size)), dtype=torch.bool, device=x.device)
             slice_mask = torch.zeros((bs * self.image_time, self.image_slice), dtype=torch.bool, device=x.device)
@@ -413,15 +414,14 @@ class UniViT(nn.Module):
             image_mask = torch.rand((bs * self.image_time * self.image_slice, (self.image_height // self.patch_size) * (self.image_width // self.patch_size)), dtype=torch.float, device=x.device) < self.mask_prob
             slice_mask = torch.rand((bs * self.image_time, self.image_slice), dtype=torch.float, device=x.device) < self.mask_prob
             time_mask = torch.rand((bs, self.image_time), dtype=torch.float, device=x.device) < self.mask_prob
-
         return image_mask, slice_mask, time_mask
     
-    def forward(self, x: torch.Tensor, dimensions: torch.Tensor, seqMask: bool = False, posMask: bool = False, train: bool = True, posOutputs: bool = False, swapPos: bool = False, adversarialPos = None, adversarialPatch=None, patchMask: bool = False):
+    def forward(self, x: torch.Tensor, dimensions: torch.Tensor, seqMask: bool = False, posMask: bool = False, train: bool = False, posOutputs: bool = False, swapPos: bool = False, adversarialPos = None, adversarialPatch=None, patchMask: bool = False):
         # Reshape and permute the input tensor
+        bs = x.shape[0]
         x = self._process_input(x)
-        bs, _, _ = x.shape
         if seqMask:
-            image_mask, slice_mask, time_mask = self._mask_sequence(x, dimensions, patchMask=True)
+            image_mask, slice_mask, time_mask = self._mask_sequence(x, dimensions, patchMask)
         else:
             image_mask = torch.zeros((bs * self.image_time * self.image_slice, (self.image_height // self.patch_size) * (self.image_width // self.patch_size)), dtype=torch.bool, device=x.device)
             slice_mask = torch.zeros((bs * self.image_time, self.image_slice), dtype=torch.bool, device=x.device)

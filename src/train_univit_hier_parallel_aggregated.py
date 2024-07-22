@@ -18,7 +18,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_list = [4,5,6,7]  # List of GPU IDs to use
+cuda_list = [4,1,2,3]  # List of GPU IDs to use
 device = torch.device(f"cuda:{cuda_list[0]}" if torch.cuda.is_available() and cuda_list else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)

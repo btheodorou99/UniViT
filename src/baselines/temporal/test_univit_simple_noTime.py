@@ -8,8 +8,8 @@ from sklearn import metrics
 from src.config import Config
 from torch.utils.data import DataLoader
 from src.models.univit_simple import UniViT
-from src.baselines.temporal.data.image_dataset import ImageDataset
 from src.models.downstream import DownstreamModel
+from src.baselines.temporal.data.image_dataset_noTime2 import ImageDataset
 
 model_key = 'univit_simple'
 
@@ -19,7 +19,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 0
+cuda_num = 2
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
   torch.cuda.manual_seed_all(SEED)

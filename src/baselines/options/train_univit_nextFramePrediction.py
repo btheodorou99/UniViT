@@ -57,9 +57,9 @@ model = UniViT(config.max_height,
 optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
 model = model.to(device)
 
-if os.path.exists(f"{save_dir}/univit.pt"):
+if os.path.exists(f"{save_dir}/univit_nextFramePrediction.pt"):
     print("Loading previous model")
-    checkpoint = torch.load(f'{save_dir}/univit.pt', map_location='cpu')
+    checkpoint = torch.load(f'{save_dir}/univit_nextFramePrediction.pt', map_location='cpu')
     model.load_state_dict(checkpoint['model'])
     optimizer.load_state_dict(checkpoint['optimizer'])
     num_steps = checkpoint['steps']
@@ -197,7 +197,7 @@ while num_steps < config.tot_steps:
             loss_plot.append(np.mean(running_loss))
             knn_acc = validate(model, knn_train_loader, knn_test_loader)
             knn_plot.append(knn_acc)
-            torch.save({'model': model.state_dict(), 'optimizer': optimizer.state_dict(), 'steps': num_steps}, f'{save_dir}/univit.pt')
+            torch.save({'model': model.state_dict(), 'optimizer': optimizer.state_dict(), 'steps': num_steps}, f'{save_dir}/univit_nextFramePrediction.pt')
         if num_steps >= config.tot_steps:
             break
   

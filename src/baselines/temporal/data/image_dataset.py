@@ -166,7 +166,7 @@ class ImageDataset(Dataset):
     def __getitem__(self, idx):
         p = self.dataset[idx]
         _, _, _, _, labels = p[-1]
-        p = p[:-1]
+        # p = p[:-1]
         image_tensor = torch.zeros(self.config.max_time, self.config.max_slice, self.config.num_channels, self.config.max_height, self.config.max_width, dtype=torch.float, device=self.device)
         dimension_tensor = torch.ones(4, dtype=torch.long)
         if len(p) > self.config.max_time:
