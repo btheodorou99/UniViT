@@ -8,8 +8,9 @@ from copy import deepcopy
 from src.config import Config
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from src.data.image_dataset import ImageDataset
 from src.models.univit_hierarchical import UniViT
+from sklearn.neighbors import KNeighborsClassifier
+from src.data.image_dataset import ImageDataset, KNNDataset
 
 SEED = 4
 random.seed(SEED)
@@ -27,8 +28,66 @@ batches_per_step = config.effective_batch_size // config.batch_size
 data_dir = '/shared/eng/bpt3/data/UniViT/data'
 save_dir = '/shared/eng/bpt3/data/UniViT/save'
 train_data_all = pickle.load(open(f'{data_dir}/trainingDataset.pkl', 'rb'))
+knn_data = {mod: random.choices(data, k=500) for (mod, data) in pickle.load(open(f'{data_dir}/tuningDataset.pkl', 'rb')).items()}
+knn_train_data = [([p], mod) for mod in knn_data for p in knn_data[mod][:450]]
+knn_test_data = [([p], mod) for mod in knn_data for p in knn_data[mod][450:500]]
+mod_list = list(knn_data.keys())
+knn_train_data = KNNDataset(knn_train_data, config, 'cpu', mod_list)
+knn_test_data = KNNDataset(knn_test_data, config, 'cpu', mod_list)
+knn_train_loader = DataLoader(knn_train_data, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers)
+knn_test_loader = DataLoader(knn_test_data, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers)
 
-for modality in ['Chest X-Ray (MIMIC)', 'Chest X-Ray (CheXpert)', 'Skin Lesion', 'MRI', 'Amyloid PET', 'FDG PET', ]:
+def update_teacher_model(teacher_model, student_model, alpha=0.999):
+    with torch.no_grad():
+        for teacher_param, student_param in zip(teacher_model.parameters(), student_model.parameters()):
+            teacher_param.data.mul_(alpha).add_(student_param.data.to(device), alpha=1 - alpha)
+
+def cls_loss_fn(student_emb, teacher_emb):
+    student_norm = F.log_softmax(student_emb, dim=-1)
+    teacher_norm = F.softmax(teacher_emb, dim=-1)
+    loss = F.kl_div(student_norm, teacher_norm, reduction='batchmean')
+    return loss
+
+def mim_loss_fn(student_emb, teacher_emb, mask):
+    student_norm = F.log_softmax(student_emb, dim=-1) * mask.unsqueeze(-1)
+    teacher_norm = F.softmax(teacher_emb, dim=-1) * mask.unsqueeze(-1)
+    loss = F.kl_div(student_norm.view(-1, config.representation_size), teacher_norm.view(-1, config.representation_size), reduction='batchmean')
+    loss /= (mask.sum() / mask.numel()) # scale loss by mask
+    return loss
+
+def update_centers(center_cls, center_patch, cls1, cls2, embd_seq1, embd_seq2):
+    cls = torch.cat([cls1, cls2], dim=0).mean(dim=0)
+    center_cls = config.center_momentum * center_cls + (1 - config.center_momentum) * cls
+    patch = torch.cat([embd_seq1, embd_seq2], dim=0).mean(dim=(0,1))
+    center_patch = config.center_momentum * center_patch + (1 - config.center_momentum) * patch
+    return center_cls, center_patch
+
+def validate(model, train, test):
+    model.eval()
+    images = []
+    labels = []
+    for batch_images, batch_dimensions, batch_labels in train:
+        batch_cls = model.embed(batch_images.to(device), batch_dimensions.to(device))
+        images.extend(batch_cls.cpu().detach().numpy())
+        labels.extend(batch_labels.numpy())
+    images = np.array(images)
+    labels = np.array(labels)
+    knn = KNeighborsClassifier(n_neighbors=5)
+    knn.fit(images, labels)
+    images = []
+    labels = []
+    for batch_images, batch_dimensions, batch_labels in test:
+        batch_cls = model.embed(batch_images.to(device), batch_dimensions.to(device))
+        images.extend(batch_cls.cpu().detach().numpy())
+        labels.extend(batch_labels.numpy())
+    images = np.array(images)    
+    labels = np.array(labels)
+    preds = knn.predict(images)
+    acc = (preds == labels).mean()
+    model.train()
+    return acc
+
+for modality in ['Chest X-Ray (MIMIC)', 'Chest X-Ray (CheXpert)', 'Skin Lesion', 'MRI', 'Amyloid PET', 'FDG PET', 'CT', 'Chest X-Ray (COVID-QU-Ex)', 'Histopathology']:
     save_name = modality.replace(' ', '_').replace('(', '').replace(')', '').replace('-', '').lower()
     print(f'Training {modality}')
     train_data_modality = [p for p in train_data_all if p[0][3] == modality]
@@ -65,31 +124,6 @@ for modality in ['Chest X-Ray (MIMIC)', 'Chest X-Ray (CheXpert)', 'Skin Lesion',
     teacher_model = deepcopy(model)
     teacher_model.eval()
     teacher_model = teacher_model.to(device)
-            
-    def update_teacher_model(teacher_model, student_model, alpha=0.999):
-        with torch.no_grad():
-            for teacher_param, student_param in zip(teacher_model.parameters(), student_model.parameters()):
-                teacher_param.data.mul_(alpha).add_(student_param.data.to(device), alpha=1 - alpha)
-
-    def cls_loss_fn(student_emb, teacher_emb):
-        student_norm = F.log_softmax(student_emb, dim=-1)
-        teacher_norm = F.softmax(teacher_emb, dim=-1)
-        loss = F.kl_div(student_norm, teacher_norm, reduction='batchmean')
-        return loss
-
-    def mim_loss_fn(student_emb, teacher_emb, mask):
-        student_norm = F.log_softmax(student_emb, dim=-1) * mask.unsqueeze(-1)
-        teacher_norm = F.softmax(teacher_emb, dim=-1) * mask.unsqueeze(-1)
-        loss = F.kl_div(student_norm.view(-1, config.representation_size), teacher_norm.view(-1, config.representation_size), reduction='batchmean')
-        loss /= (mask.sum() / mask.numel()) # scale loss by mask
-        return loss
-    
-    def update_centers(center_cls, center_patch, cls1, cls2, embd_seq1, embd_seq2):
-        cls = torch.cat([cls1, cls2], dim=0).mean(dim=0)
-        center_cls = config.center_momentum * center_cls + (1 - config.center_momentum) * cls
-        patch = torch.cat([embd_seq1, embd_seq2], dim=0).mean(dim=(0,1))
-        center_patch = config.center_momentum * center_patch + (1 - config.center_momentum) * patch
-        return center_cls, center_patch
 
     # Train Model
     model.train()
@@ -97,8 +131,7 @@ for modality in ['Chest X-Ray (MIMIC)', 'Chest X-Ray (CheXpert)', 'Skin Lesion',
     pbar.update(num_steps)
 
     loss_plot = []
-    step_loss = 0
-    batches_since_step = 0
+    knn_plot = []
     while num_steps < config.tot_steps:
         running_loss = []
         for batch_images, batch_dimensions in train_loader:
@@ -130,6 +163,8 @@ for modality in ['Chest X-Ray (MIMIC)', 'Chest X-Ray (CheXpert)', 'Skin Lesion',
             num_steps += 1
             if num_steps % 1000 == 0:
                 loss_plot.append(np.mean(running_loss))
+                knn_acc = validate(model, knn_train_loader, knn_test_loader)
+                knn_plot.append(knn_acc)
                 torch.save({'model': model.state_dict(), 'optimizer': optimizer.state_dict(), 'steps': num_steps}, f'{save_dir}/univit{save_name}.pt')
             if num_steps >= config.tot_steps:
                 break

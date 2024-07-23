@@ -7,12 +7,11 @@ from tqdm import tqdm
 from sklearn import metrics
 from src.config import Config
 from torch.utils.data import DataLoader
-from src.models.univit_simple import UniViT
-# from src.models.univit_simple_cls import UniViT
+from src.models.medcoss import MedCoSS
 from src.data.image_dataset import ImageDataset
 from src.models.downstream import DownstreamModel
 
-model_key = 'univit_nextFrameSimilarity'
+model_key = 'medcoss'
 
 SEED = 4
 random.seed(SEED)
@@ -34,7 +33,7 @@ test_data = pickle.load(open(f'{data_dir}/testingDataset.pkl', 'rb'))
 test_data = {task: [[p] for p in test_data[task] if p[4] is not None] for task in test_data}
 task_map = pickle.load(open(f'{data_dir}/taskMap.pkl', 'rb'))
 
-model = UniViT(config.max_height, 
+model = MedCoSS(config.max_height, 
                config.max_width, 
                config.max_time, 
                config.max_slice, 
