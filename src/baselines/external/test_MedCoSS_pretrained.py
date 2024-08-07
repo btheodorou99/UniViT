@@ -1,3 +1,4 @@
+# https://github.com/bytedance/ibot/tree/main
 import torch
 import random
 import pickle
@@ -6,11 +7,13 @@ from tqdm import tqdm
 from sklearn import metrics
 from src.config import Config
 from torch.utils.data import DataLoader
-from src.models.medcoss import MedCoSS
-from src.data.image_dataset import ImageDataset
 from src.models.downstream import DownstreamModel
+from src.data.image_dataset_pretrained import ImageDataset
+from src.baselines.external.models.unimodel_2D import Unified_Model as Model2D
+from src.baselines.external.models.unimodel_3D import Unified_Model as Model3D
 
-model_key = "medcoss"
+model_key = "medcoss_pretrained"
+EMBEDDING_DIM = 768
 
 SEED = 4
 random.seed(SEED)
@@ -18,64 +21,58 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 3
+cuda_num = 2
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
 
 data_dir = "/shared/eng/bpt3/data/UniViT/data"
 save_dir = "/shared/eng/bpt3/data/UniViT/save"
-save_dir = "/srv/local/data/bpt3/UniViT/save"
 tune_data = pickle.load(open(f"{data_dir}/tuningDataset.pkl", "rb"))
 tune_data = {
-    task: [[p] for p in tune_data[task] if p[4] is not None] for task in tune_data
+    task: [p for p in tune_data[task] if p[4] is not None] for task in tune_data
 }
 test_data = pickle.load(open(f"{data_dir}/testingDataset.pkl", "rb"))
 test_data = {
-    task: [[p] for p in test_data[task] if p[4] is not None] for task in test_data
+    task: [p for p in test_data[task] if p[4] is not None] for task in test_data
 }
 task_map = pickle.load(open(f"{data_dir}/taskMap.pkl", "rb"))
+flat_tasks = pickle.load(open(f"{data_dir}/flatTasks.pkl", "rb"))
 
-model = MedCoSS(
-    config.max_height,
-    config.max_width,
-    config.max_time,
-    config.max_slice,
-    config.num_channels,
-    config.patch_size,
-    config.representation_size,
-    config.num_layers,
-    config.num_heads,
-    config.projection_size,
-    config.mlp_dim,
-    config.dropout,
-    config.attention_dropout,
-    config.mask_prob,
-).to(device)
-print("Loading previous model")
-model.load_state_dict(
-    torch.load(f"{save_dir}/{model_key}.pt", map_location="cpu")["model"], strict=False
-)
-model.eval()
-model.requires_grad_(False)
+chkpt = torch.load(f"{save_dir}/medcoss.pt", map_location="cpu")
 
 allResults = {}
-tasks = ["Chest X-Ray (MIMIC)", "Skin Lesion", "MRI", "Amyloid PET", "FDG PET"]
-# for task in tune_data:
-for task in tasks:
+for task in tune_data:
     print(f"\n\nDownstream Evaluation on {task}")
     task_tune = tune_data[task]
-    label = task_tune[0][0][4]
+    label = task_tune[0][4]
     if isinstance(label, list):
         label_size = len(label)
         multiclass = False
-    elif isinstance(label, int):
-        label_size = len(set([p[0][4] for p in task_tune]))
-        multiclass = True
     else:
-        continue
+        label_size = len(set([p[4] for p in task_tune]))
+        multiclass = True
+
+    if task in flat_tasks:
+        model = Model2D((config.max_height, config.max_height))
+    else:
+        model = Model3D(
+            (config.max_height, config.max_height, max(config.max_slice, 16))
+        )
+
+    model.load_state_dict(chkpt["model"], strict=False)
+    model.to(device)
+
     task_tune_data = ImageDataset(
-        task_tune, config, "cpu", augment=False, downstream=True, multiclass=multiclass
+        task_tune,
+        config,
+        "cpu",
+        patch_size=16,
+        image_size=config.max_height,
+        image_depth=config.max_slice if task not in flat_tasks else None,
+        augment=False,
+        downstream=True,
+        multiclass=multiclass,
     )
     task_tune_loader = DataLoader(
         task_tune_data,
@@ -85,7 +82,15 @@ for task in tasks:
     )
     task_test = test_data[task]
     task_test_data = ImageDataset(
-        task_test, config, "cpu", augment=False, downstream=True, multiclass=multiclass
+        task_test,
+        config,
+        "cpu",
+        patch_size=16,
+        image_size=config.max_height,
+        image_depth=config.max_slice if task not in flat_tasks else None,
+        augment=False,
+        downstream=True,
+        multiclass=multiclass,
     )
     task_test_loader = DataLoader(
         task_test_data,
@@ -106,7 +111,7 @@ for task in tasks:
     else:
         continue
 
-    downstream = DownstreamModel(config.representation_size, label_size).to(device)
+    downstream = DownstreamModel(EMBEDDING_DIM, label_size).to(device)
     optimizer = torch.optim.SGD(
         downstream.parameters(), lr=config.downstream_lr, momentum=0.9, weight_decay=0
     )
@@ -114,13 +119,18 @@ for task in tasks:
         range(config.downstream_epochs), leave=False, desc=f"{task} Tuning"
     ):
         batches_since_step = 0
-        for batch_images, batch_dimensions, batch_labels in tqdm(
+        for batch_images, batch_labels in tqdm(
             task_tune_loader, desc=f"{task} Tuning Epoch {epoch+1}", leave=False
         ):
             batch_images = batch_images.to(device)
             batch_labels = batch_labels.to(device)
             with torch.no_grad():
-                representations = model.embed(batch_images, batch_dimensions)
+                representations = model(
+                    {
+                        "data": batch_images,
+                        "modality": "2D image" if task in flat_tasks else "3D image",
+                    }
+                )
             predictions = downstream(representations)
             predictions = train_activation(predictions)
             loss = loss_fn(predictions, batch_labels)
@@ -130,13 +140,18 @@ for task in tasks:
 
     task_preds = []
     task_labels = []
-    for batch_images, batch_dimensions, batch_labels in tqdm(
+    for batch_images, batch_labels in tqdm(
         task_test_loader, desc=f"{task} Testing", leave=False
     ):
         batch_images = batch_images.to(device)
         batch_labels = batch_labels.to(device)
         with torch.no_grad():
-            representations = model.embed(batch_images, batch_dimensions)
+            representations = model(
+                {
+                    "data": batch_images,
+                    "modality": "2D image" if task in flat_tasks else "3D image",
+                }
+            )
             predictions = downstream(representations)
             predictions = test_activation(predictions)
             task_preds.extend(predictions.cpu().tolist())
@@ -193,6 +208,5 @@ for task in tasks:
         taskResults = {"Accuracy": acc, "F1": f1}
         print(taskResults)
 
-    # raise Exception
     allResults[task] = taskResults
-# pickle.dump(allResults, open(f'{save_dir}/{model_key}_downstreamResults.pkl', 'wb'))
+pickle.dump(allResults, open(f"{save_dir}/{model_key}_downstreamResults.pkl", "wb"))

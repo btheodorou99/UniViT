@@ -49,9 +49,11 @@ for task in tune_data:
     if isinstance(label, list):
         label_size = len(label)
         multiclass = False
-    else:
+    elif isinstance(label, int):
         label_size = len(set([p[0][4] for p in task_tune]))
         multiclass = True
+    else:
+        continue
         
     task_tune_data = ImageDataset(task_tune, config, 'cpu', processing_fn=preprocess, augment=False, downstream=True, multiclass=multiclass)
     task_tune_loader = DataLoader(task_tune_data, batch_size=config.downstream_batch_size, shuffle=True, num_workers=config.num_workers)
@@ -69,10 +71,12 @@ for task in tune_data:
         train_activation = torch.nn.Identity()
         test_activation = torch.nn.Softmax(dim=1)
     else:
-        raise ValueError('Invalid task type')
+        continue
     
     downstream = DownstreamModel(EMBEDDING_DIM, label_size).to(device)
-    optimizer = torch.optim.Adam(downstream.parameters(), lr=config.downstream_lr)
+    optimizer = torch.optim.SGD(
+        downstream.parameters(), lr=config.downstream_lr, momentum=0.9, weight_decay=0
+    )
     for epoch in tqdm(range(config.downstream_epochs), leave=False, desc=f'{task} Tuning'):
         batches_since_step = 0
         for batch_images, batch_labels in tqdm(task_tune_loader, desc=f'{task} Tuning Epoch {epoch+1}', leave=False):

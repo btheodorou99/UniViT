@@ -6,11 +6,11 @@ from tqdm import tqdm
 from sklearn import metrics
 from src.config import Config
 from torch.utils.data import DataLoader
-from src.models.medcoss import MedCoSS
-from src.data.image_dataset import ImageDataset
+from src.models.univit_noMulti import UniViT
 from src.models.downstream import DownstreamModel
+from src.data.image_dataset_noMulti import ImageDataset
 
-model_key = "medcoss"
+model_key = "univit_noMulti"
 
 SEED = 4
 random.seed(SEED)
@@ -18,7 +18,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 3
+cuda_num = 0
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
@@ -36,9 +36,8 @@ test_data = {
 }
 task_map = pickle.load(open(f"{data_dir}/taskMap.pkl", "rb"))
 
-model = MedCoSS(
+model = UniViT(
     config.max_height,
-    config.max_width,
     config.max_time,
     config.max_slice,
     config.num_channels,
@@ -51,6 +50,8 @@ model = MedCoSS(
     config.dropout,
     config.attention_dropout,
     config.mask_prob,
+    config.patch_prob,
+    extra_cls=True,
 ).to(device)
 print("Loading previous model")
 model.load_state_dict(
@@ -60,9 +61,7 @@ model.eval()
 model.requires_grad_(False)
 
 allResults = {}
-tasks = ["Chest X-Ray (MIMIC)", "Skin Lesion", "MRI", "Amyloid PET", "FDG PET"]
-# for task in tune_data:
-for task in tasks:
+for task in tune_data:
     print(f"\n\nDownstream Evaluation on {task}")
     task_tune = tune_data[task]
     label = task_tune[0][0][4]
@@ -193,6 +192,5 @@ for task in tasks:
         taskResults = {"Accuracy": acc, "F1": f1}
         print(taskResults)
 
-    # raise Exception
     allResults[task] = taskResults
-# pickle.dump(allResults, open(f'{save_dir}/{model_key}_downstreamResults.pkl', 'wb'))
+pickle.dump(allResults, open(f"{save_dir}/{model_key}_downstreamResults.pkl", "wb"))

@@ -12,70 +12,73 @@ TIME_AUGMENTATION_PROB = 1 / 2
 SLICE_AUGMENTATION_PROB = 1 / 2
 IMAGE_AUGMENTATION_PROB = 3 / 4
 
+
 class ImageDataset(Dataset):
-    def __init__(self, dataset, config, device, augment=False, downstream=False, multiclass=False):
+    def __init__(
+        self, dataset, config, device, augment=False, downstream=False, multiclass=False
+    ):
         self.dataset = dataset
         self.config = config
         self.device = device
         self.init_augment = augment
         self.downstream = downstream
         self.multiclass = multiclass
-        self.transform = transforms.Compose([
-            transforms.ToTensor(),
-        ])
+        self.transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+            ]
+        )
 
     def __len__(self):
         return len(self.dataset)
-    
-    def adjust_size(self, origDim):
-        if origDim[0] > self.config.max_slice:
-            newSlice = self.config.max_slice
-        else:
-            newSlice = origDim[0]
-        if origDim[1] > self.config.max_height:
-            scale_factor_height = self.config.max_height / origDim[1]
-        else:
-            scale_factor_height = 1
-        if origDim[2] > self.config.max_width:
-            scale_factor_width = self.config.max_width / origDim[2]
-        else:
-            scale_factor_width = 1
-        
-        scale_factor_image = min(scale_factor_height, scale_factor_width)
-        newHeight = min(max(int(origDim[1] * scale_factor_image), MIN_RESOLUTION), self.config.max_height)
-        newWidth = min(max(int(origDim[2] * scale_factor_image), MIN_RESOLUTION), self.config.max_width)
-        return (newSlice, newHeight, newWidth)
-      
+
     def load_image(self, image_path, chosenDim):
-        if image_path.endswith('.npy'):
-            img = torch.tensor(np.load(image_path), dtype=torch.float)
-            if len(img.shape) == 4:
-                img = img[:,:,:,0]
-            img = img.permute(2, 0, 1).unsqueeze(1).repeat(1, 3, 1, 1)
-        elif image_path.endswith('.jpg') or image_path.endswith('.png') or image_path.endswith('.tif'):
-            img = Image.open(image_path).convert('RGB')
-            img = self.transform(img).unsqueeze(0)
+        if (
+            image_path.endswith(".jpg")
+            or image_path.endswith(".png")
+            or image_path.endswith(".tif")
+        ):
+            img = Image.open(image_path).convert("RGB")
+            img = self.transform(img)
         else:
-            raise ValueError('Invalid image format')
-        
-        currDim = tuple(img[:, 0, :, :].shape)
+            raise ValueError("Invalid image format")
+
+        currDim = tuple(img[0, :, :].shape)
         if currDim != chosenDim:
-            if currDim[1] == chosenDim[2] and currDim[2] == chosenDim[1] or (currDim[1] > chosenDim[1]) == (chosenDim[2] > currDim[2]) and (currDim[1] != chosenDim[1] and currDim[2] != chosenDim[2]):
-                img = img.permute(1, 0, 3, 2).unsqueeze(0)
-                img = F.interpolate(img, size=(chosenDim[0], chosenDim[1], chosenDim[2]), mode='trilinear', align_corners=True)
-                img = img.squeeze(0).permute(1, 0, 2, 3)
+            if (
+                currDim[0] == chosenDim[1]
+                and currDim[1] == chosenDim[0]
+                or (currDim[0] > chosenDim[0]) == (chosenDim[1] > currDim[1])
+                and (currDim[0] != chosenDim[0] and currDim[1] != chosenDim[1])
+            ):
+                img = img.permute(0, 2, 1)
+                img = F.interpolate(
+                    img.unsqueeze(0),
+                    size=(chosenDim[0], chosenDim[1]),
+                    mode="bilinear",
+                    align_corners=True,
+                ).squeeze(0)
             else:
-                img = img.permute(1, 0, 2, 3).unsqueeze(0)
-                img = F.interpolate(img, size=(chosenDim[0], chosenDim[1], chosenDim[2]), mode='trilinear', align_corners=True)
-                img = img.squeeze(0).permute(1, 0, 2, 3)
+                img = F.interpolate(
+                    img.unsqueeze(0),
+                    size=(chosenDim[0], chosenDim[1]),
+                    mode="bilinear",
+                    align_corners=True,
+                ).squeeze(0)
 
         return img
-    
+
     def random_crop(self, img, dim):
-        crop_height = random.randint(int(dim[2] * MIN_CROP), img.shape[3])  # Adjust range as needed
-        crop_width = random.randint(int(dim[3] * MIN_CROP), img.shape[4])  # Adjust range as needed
-        i, j, h, w = transforms.RandomCrop.get_params(img[0, 0, 0, :, :], output_size=(crop_height, crop_width))
-        img[:, :, :, :crop_height, :crop_width] = img[:, :, :, i:i+h, j:j+w]
+        crop_height = random.randint(
+            int(dim[2] * MIN_CROP), img.shape[3]
+        )  # Adjust range as needed
+        crop_width = random.randint(
+            int(dim[3] * MIN_CROP), img.shape[4]
+        )  # Adjust range as needed
+        i, j, h, w = transforms.RandomCrop.get_params(
+            img[0, 0, 0, :, :], output_size=(crop_height, crop_width)
+        )
+        img[:, :, :, :crop_height, :crop_width] = img[:, :, :, i : i + h, j : j + w]
         img[:, :, :, crop_height:, :] = 0
         img[:, :, :, :, crop_width:] = 0
         dim[2] = crop_height
@@ -88,7 +91,14 @@ class ImageDataset(Dataset):
         scale = random.uniform(min_scale, max_scale)
         height = min(max(int(dim[2] * scale), MIN_RESOLUTION), self.config.max_height)
         width = min(max(int(dim[3] * scale), MIN_RESOLUTION), self.config.max_width)
-        img[:, :, :, :height, :width] = F.interpolate(img[:, :, :, :dim[2], :dim[3]].view(-1, self.config.num_channels, dim[2], dim[3]), size=(height, width), mode='bilinear', align_corners=False).view(img.shape[0], img.shape[1], self.config.num_channels, height, width)
+        img[:, :, :, :height, :width] = F.interpolate(
+            img[:, :, :, : dim[2], : dim[3]].view(
+                -1, self.config.num_channels, dim[2], dim[3]
+            ),
+            size=(height, width),
+            mode="bilinear",
+            align_corners=False,
+        ).view(img.shape[0], img.shape[1], self.config.num_channels, height, width)
         img[:, :, :, height:, :] = 0
         img[:, :, :, :, width:] = 0
         dim[2] = height
@@ -98,10 +108,12 @@ class ImageDataset(Dataset):
     def remove_timestep(self, img, dim):
         if dim[0] > 2:  # Check if there are multiple time steps
             idx_to_remove = random.randint(0, dim[0] - 1)
-            img[idx_to_remove:-1, :, :, :, :] = img[idx_to_remove+1:, :, :, :, :].clone()
+            img[idx_to_remove:-1, :, :, :, :] = img[
+                idx_to_remove + 1 :, :, :, :, :
+            ].clone()
             img[-1, :, :, :, :] = 0
             dim[0] = dim[0] - 1
-            
+
         return img, dim
 
     def select_timestep(self, img, dim):
@@ -115,9 +127,16 @@ class ImageDataset(Dataset):
     def slice_interpolation(self, img, dim):
         # Interpolating slices if there are multiple, adjusting to a specific number of slices
         if dim[1] > 2:
-            slices = random.randint(2, dim[1])  # Target number of slices, adjust as needed
+            slices = random.randint(
+                2, dim[1]
+            )  # Target number of slices, adjust as needed
             img = img.permute(0, 2, 1, 3, 4)
-            img[:, :, :slices, :dim[2], :dim[3]] = F.interpolate(img[:, :, :dim[1], :dim[2], :dim[3]], size=(slices, dim[2], dim[3]), mode='trilinear', align_corners=False)
+            img[:, :, :slices, : dim[2], : dim[3]] = F.interpolate(
+                img[:, :, : dim[1], : dim[2], : dim[3]],
+                size=(slices, dim[2], dim[3]),
+                mode="trilinear",
+                align_corners=False,
+            )
             img = img.permute(0, 2, 1, 3, 4)
             img[:, slices:, :, :, :] = 0
             dim[1] = slices
@@ -130,7 +149,7 @@ class ImageDataset(Dataset):
             img[:, 1:, :, :, :] = 0
             dim[1] = 1
         return img, dim
-    
+
     def augment(self, img, dim):
         hasAugmented = False
         if dim[0] > 1 and random.random() < TIME_AUGMENTATION_PROB:
@@ -139,28 +158,28 @@ class ImageDataset(Dataset):
                 img, dim = self.remove_timestep(img, dim)
             else:
                 img, dim = self.select_timestep(img, dim)
-        
-        if dim[1] > 1 and random.random() < SLICE_AUGMENTATION_PROB:    
+
+        if dim[1] > 1 and random.random() < SLICE_AUGMENTATION_PROB:
             hasAugmented = True
             if dim[1] > 2 and random.random() < 0.5:
                 img, dim = self.slice_interpolation(img, dim)
             else:
                 img, dim = self.select_slice(img, dim)
-            
+
         if not hasAugmented or random.random() < IMAGE_AUGMENTATION_PROB:
             if random.random() < 0.5:
                 img, dim = self.random_resize(img, dim)
             else:
                 img, dim = self.random_crop(img, dim)
-                
+
         return img, dim
-        
+
     def augment_batch(self, img, dim):
         img = img.clone()
         dim = dim.clone()
         for i in range(img.shape[0]):
             img[i], dim[i] = self.augment(img[i], dim[i])
-            
+
         return img, dim
 
     def __getitem__(self, idx):
@@ -168,11 +187,15 @@ class ImageDataset(Dataset):
         _, _, _, _, labels = p[-1]
         path1 = p[-2][0]
         path2 = p[-1][0]
-        chosenDim = (16, 64, 64)
-        image1 = self.load_image(path1, chosenDim)[:,0].unsqueeze(0)
-        image2 = self.load_image(path2, chosenDim)[:,0].unsqueeze(0)
+        chosenDim = (224, 224)
+        image1 = self.load_image(path1, chosenDim)
+        image2 = self.load_image(path2, chosenDim)
         if self.downstream:
-            label_tensor = torch.tensor(labels, dtype=torch.long if self.multiclass else torch.float, device=self.device)
+            label_tensor = torch.tensor(
+                labels,
+                dtype=torch.long if self.multiclass else torch.float,
+                device=self.device,
+            )
             return image1, image2, label_tensor
-        
+
         return image1, image2
