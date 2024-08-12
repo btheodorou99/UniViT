@@ -8,7 +8,7 @@ from src.config import Config
 from src.models.univit import UniViT
 from torch.utils.data import DataLoader
 from src.data.image_dataset import ImageDataset
-from src.models.downstream import DownstreamModel
+from src.models.downstream import LinearClassifier
 
 model_key = "univit_noLoss"
 
@@ -18,13 +18,14 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 0
+cuda_num = 1
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
 
 data_dir = "/shared/eng/bpt3/data/UniViT/data"
 save_dir = "/shared/eng/bpt3/data/UniViT/save"
+save_dir = "/srv/local/data/bpt3/UniViT/save"
 tune_data = pickle.load(open(f"{data_dir}/tuningDataset.pkl", "rb"))
 tune_data = {
     task: [[p] for p in tune_data[task] if p[4] is not None] for task in tune_data
@@ -39,7 +40,7 @@ model = UniViT(
     config.max_height,
     config.max_width,
     config.max_time,
-    config.max_slice,
+    config.max_depth,
     config.num_channels,
     config.patch_size,
     config.representation_size,
@@ -105,7 +106,7 @@ for task in tune_data:
     else:
         continue
 
-    downstream = DownstreamModel(config.representation_size, label_size).to(device)
+    downstream = LinearClassifier(config.representation_size, label_size).to(device)
     optimizer = torch.optim.SGD(
         downstream.parameters(), lr=config.downstream_lr, momentum=0.9, weight_decay=0
     )

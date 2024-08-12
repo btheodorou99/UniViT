@@ -6,7 +6,7 @@ from tqdm import tqdm
 from sklearn import metrics
 from src.config import Config
 from torch.utils.data import DataLoader
-from src.models.downstream import DownstreamModel
+from src.models.downstream import LinearClassifier
 from src.models.univit_noTimeNo3DNoMulti import UniViT
 from src.data.image_dataset_noTimeNo3DNoMulti import ImageDataset
 
@@ -100,7 +100,7 @@ for task in tune_data:
     else:
         continue
 
-    downstream = DownstreamModel(config.representation_size, label_size).to(device)
+    downstream = LinearClassifier(config.representation_size, label_size).to(device)
     optimizer = torch.optim.SGD(
         downstream.parameters(), lr=config.downstream_lr, momentum=0.9, weight_decay=0
     )

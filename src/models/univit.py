@@ -308,7 +308,7 @@ class UniViT(nn.Module):
         max_height_size: int,
         max_width_size: int,
         max_time_size: int,
-        max_slice_size: int,
+        max_depth_size: int,
         num_channels: int,
         patch_size: int,
         representation_size: int,
@@ -332,7 +332,7 @@ class UniViT(nn.Module):
         )
         self.image_height = max_height_size
         self.image_width = max_width_size
-        self.image_slice = max_slice_size
+        self.image_depth = max_depth_size
         self.image_time = max_time_size
         self.image_channels = num_channels
         self.patch_size = patch_size
@@ -348,8 +348,8 @@ class UniViT(nn.Module):
         self.conv_proj = Conv4d(
             in_channels=self.image_channels,
             out_channels=representation_size,
-            kernel_size=(max_time_size, max_slice_size, patch_size, patch_size),
-            stride=(max_time_size, max_slice_size, patch_size, patch_size),
+            kernel_size=(max_time_size, max_depth_size, patch_size, patch_size),
+            stride=(max_time_size, max_depth_size, patch_size, patch_size),
         )
         self.masked_embed = nn.Parameter(torch.zeros(1, 1, representation_size))
 
@@ -366,10 +366,10 @@ class UniViT(nn.Module):
                 torch.zeros(1, self.image_time, representation_size)
             )
             seq_length += self.image_time
-            self.slice_class_tokens = nn.Parameter(
-                torch.zeros(1, self.image_slice, representation_size)
+            self.depth_class_tokens = nn.Parameter(
+                torch.zeros(1, self.image_depth, representation_size)
             )
-            seq_length += self.image_slice
+            seq_length += self.image_depth
 
         self.encoder = Encoder(
             num_layers,
@@ -393,8 +393,8 @@ class UniViT(nn.Module):
             f"Wrong image time dimension! Expected {self.image_time} but got {t}!",
         )
         torch._assert(
-            s == self.image_slice,
-            f"Wrong image slice dimension! Expected {self.image_slice} but got {s}!",
+            s == self.image_depth,
+            f"Wrong image depth dimension! Expected {self.image_depth} but got {s}!",
         )
         torch._assert(
             c == self.image_channels,
@@ -439,15 +439,15 @@ class UniViT(nn.Module):
             time_cls_mask = torch.zeros(
                 (bs, self.image_time), dtype=torch.bool, device=x.device
             )
-            slice_cls_mask = torch.zeros(
-                (bs, self.image_slice), dtype=torch.bool, device=x.device
+            depth_cls_mask = torch.zeros(
+                (bs, self.image_depth), dtype=torch.bool, device=x.device
             )
         for i in range(bs):
             mask[i, math.ceil(dimensions[i, 2] / self.patch_size) :, :] = True
             mask[i, :, math.ceil(dimensions[i, 3] / self.patch_size) :] = True
             if self.extra_cls:
                 time_cls_mask[i, dimensions[i, 0] :] = True
-                slice_cls_mask[i, dimensions[i, 1] :] = True
+                depth_cls_mask[i, dimensions[i, 1] :] = True
         mask = mask.reshape(bs, seq_len)
 
         # Add positional embeddings
@@ -455,7 +455,7 @@ class UniViT(nn.Module):
         pos_emb = self.pos_embedding(pos_indices)
         x = x + pos_emb
         if self.extra_cls:
-            return x, mask, time_cls_mask, slice_cls_mask
+            return x, mask, time_cls_mask, depth_cls_mask
         else:
             return x, mask
 
@@ -509,7 +509,7 @@ class UniViT(nn.Module):
         )
 
         if self.extra_cls:
-            x, orig_mask, time_mask, slice_mask = self._prepare_sequence(x, dimensions)
+            x, orig_mask, time_mask, depth_mask = self._prepare_sequence(x, dimensions)
         else:
             x, orig_mask = self._prepare_sequence(x, dimensions)
 
@@ -520,20 +520,20 @@ class UniViT(nn.Module):
             batch_time_class_tokens = self.time_class_tokens.expand(bs, -1, -1).to(
                 x.device
             )
-            batch_slice_class_tokens = self.slice_class_tokens.expand(bs, -1, -1).to(
+            batch_depth_class_tokens = self.depth_class_tokens.expand(bs, -1, -1).to(
                 x.device
             )
             x = torch.cat(
                 [
                     batch_class_token,
                     batch_time_class_tokens,
-                    batch_slice_class_tokens,
+                    batch_depth_class_tokens,
                     x,
                 ],
                 dim=1,
             )
             encoder_mask = torch.cat(
-                [batch_class_mask, time_mask, slice_mask, orig_mask], dim=1
+                [batch_class_mask, time_mask, depth_mask, orig_mask], dim=1
             )
         else:
             x = torch.cat([batch_class_token, x], dim=1)
@@ -550,7 +550,7 @@ class UniViT(nn.Module):
                     mask,
                     orig_mask,
                     time_mask,
-                    slice_mask,
+                    depth_mask,
                 )
             else:
                 return self.cls_head(cls), self.embed_head(x), mask, orig_mask
@@ -563,7 +563,7 @@ class UniViT(nn.Module):
         bs = x.shape[0]
 
         if self.extra_cls:
-            x, mask, time_mask, slice_mask = self._prepare_sequence(x, dimensions)
+            x, mask, time_mask, depth_mask = self._prepare_sequence(x, dimensions)
         else:
             x, mask = self._prepare_sequence(x, dimensions)
 
@@ -572,17 +572,17 @@ class UniViT(nn.Module):
         batch_class_mask = torch.zeros(bs, 1).bool().to(x.device)
         if self.extra_cls:
             batch_time_class_tokens = self.time_class_tokens.expand(bs, -1, -1)
-            batch_slice_class_tokens = self.slice_class_tokens.expand(bs, -1, -1)
+            batch_depth_class_tokens = self.depth_class_tokens.expand(bs, -1, -1)
             x = torch.cat(
                 [
                     batch_class_token,
                     batch_time_class_tokens,
-                    batch_slice_class_tokens,
+                    batch_depth_class_tokens,
                     x,
                 ],
                 dim=1,
             )
-            mask = torch.cat([batch_class_mask, time_mask, slice_mask, mask], dim=1)
+            mask = torch.cat([batch_class_mask, time_mask, depth_mask, mask], dim=1)
         else:
             x = torch.cat([batch_class_token, x], dim=1)
             mask = torch.cat([batch_class_mask, mask], dim=1)
@@ -594,3 +594,41 @@ class UniViT(nn.Module):
             return self.cls_head(cls)
 
         return cls
+
+    def embed_patches(self, x: torch.Tensor, dimensions: torch.Tensor, train: bool = False):
+        # Reshape and permute the input tensor
+        x = self._process_input(x)
+        bs = x.shape[0]
+
+        if self.extra_cls:
+            x, mask, time_mask, depth_mask = self._prepare_sequence(x, dimensions)
+        else:
+            x, mask = self._prepare_sequence(x, dimensions)
+
+        # Expand the class token to the full batch
+        batch_class_token = self.class_token.expand(bs, -1, -1)
+        batch_class_mask = torch.zeros(bs, 1).bool().to(x.device)
+        if self.extra_cls:
+            batch_time_class_tokens = self.time_class_tokens.expand(bs, -1, -1)
+            batch_depth_class_tokens = self.depth_class_tokens.expand(bs, -1, -1)
+            x = torch.cat(
+                [
+                    batch_class_token,
+                    batch_time_class_tokens,
+                    batch_depth_class_tokens,
+                    x,
+                ],
+                dim=1,
+            )
+            mask = torch.cat([batch_class_mask, time_mask, depth_mask, mask], dim=1)
+        else:
+            x = torch.cat([batch_class_token, x], dim=1)
+            mask = torch.cat([batch_class_mask, mask], dim=1)
+
+        x = self.encoder(x, mask)
+        x = x[:, 1:]
+
+        if train:
+            return self.embed_head(x)
+
+        return x

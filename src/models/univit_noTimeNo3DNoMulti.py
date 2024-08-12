@@ -303,3 +303,20 @@ class UniViT(nn.Module):
             return self.cls_head(cls)
 
         return cls
+
+    def embed_patches(self, x: torch.Tensor, train: bool = False):
+        # Reshape and permute the input tensor
+        x = self._process_input(x)
+        bs = x.shape[0]
+        x = self._prepare_sequence(x)
+
+        # Expand the class token to the full batch
+        batch_class_token = self.class_token.expand(bs, -1, -1)
+        x = torch.cat([batch_class_token, x], dim=1)
+        x = self.encoder(x)
+        x = x[:, 1:]
+
+        if train:
+            return self.embed_head(x)
+
+        return x

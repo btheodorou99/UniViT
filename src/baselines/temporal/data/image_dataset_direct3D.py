@@ -33,8 +33,8 @@ class ImageDataset(Dataset):
         return len(self.dataset)
 
     def adjust_size(self, origDim):
-        if origDim[0] > self.config.max_slice:
-            newSlice = self.config.max_slice
+        if origDim[0] > self.config.max_depth:
+            newSlice = self.config.max_depth
         else:
             newSlice = origDim[0]
         if origDim[1] > self.config.max_height:

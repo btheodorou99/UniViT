@@ -11,16 +11,16 @@ from torch.utils.data import DataLoader
 from src.models.univit import UniViT
 from src.data.image_dataset import ImageDataset
 
-SEED = 4
-random.seed(SEED)
-np.random.seed(SEED)
-torch.manual_seed(SEED)
+# SEED = 4
+# random.seed(SEED)
+# np.random.seed(SEED)
+# torch.manual_seed(SEED)
 
 config = Config()
 cuda_num = 4
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
-if torch.cuda.is_available():
-    torch.cuda.manual_seed_all(SEED)
+# if torch.cuda.is_available():
+#     torch.cuda.manual_seed_all(SEED)
 
 config.batch_size = config.effective_batch_size
 data_dir = "/shared/eng/bpt3/data/UniViT/data"
@@ -38,7 +38,7 @@ model = UniViT(
     config.max_height,
     config.max_width,
     config.max_time,
-    config.max_slice,
+    config.max_depth,
     config.num_channels,
     config.patch_size,
     config.representation_size,

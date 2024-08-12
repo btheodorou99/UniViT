@@ -76,7 +76,7 @@ model = MedCoSS(
     config.max_height,
     config.max_width,
     config.max_time,
-    config.max_slice,
+    config.max_depth,
     config.num_channels,
     config.patch_size,
     config.representation_size,

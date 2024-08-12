@@ -1,6 +1,6 @@
 # Original patch size 16
 # Adjust Max height/width
-# Increase Max slice if possible
+# Increase Max depth if possible
 # Note original 400 epochs of 1.2 million images, ~500 million images with batch size 256 so 2 million steps
 
 
@@ -10,7 +10,7 @@ class Config(object):
         max_height=224,
         max_width=224,
         max_time=5,
-        max_slice=5,
+        max_depth=5,
         num_channels=3,
         patch_size=14,
         representation_size=768,
@@ -42,7 +42,7 @@ class Config(object):
         self.max_height = max_height
         self.max_width = max_width
         self.max_time = max_time
-        self.max_slice = max_slice
+        self.max_depth = max_depth
         self.num_channels = num_channels
         self.patch_size = patch_size
         self.representation_size = representation_size

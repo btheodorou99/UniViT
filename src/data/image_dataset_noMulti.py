@@ -34,8 +34,8 @@ class ImageDataset(Dataset):
         return len(self.dataset)
 
     def adjust_size(self, origDim):
-        if origDim[0] > self.config.max_slice:
-            newSlice = self.config.max_slice
+        if origDim[0] > self.config.max_depth:
+            newSlice = self.config.max_depth
         else:
             newSlice = origDim[0]
         return (newSlice, self.image_size, self.image_size)
@@ -126,25 +126,25 @@ class ImageDataset(Dataset):
             dim[0] = 1
         return img, dim
 
-    def slice_interpolation(self, img, dim):
-        # Interpolating slices if there are multiple, adjusting to a specific number of slices
+    def depth_interpolation(self, img, dim):
+        # Interpolating depths if there are multiple, adjusting to a specific number of depths
         if dim[1] > 2:
-            slices = random.randint(
+            depths = random.randint(
                 2, dim[1]
-            )  # Target number of slices, adjust as needed
+            )  # Target number of depths, adjust as needed
             img = img.permute(0, 2, 1, 3, 4)
-            img[:, :, :slices, : dim[2], : dim[3]] = F.interpolate(
+            img[:, :, :depths, : dim[2], : dim[3]] = F.interpolate(
                 img[:, :, : dim[1], : dim[2], : dim[3]],
-                size=(slices, dim[2], dim[3]),
+                size=(depths, dim[2], dim[3]),
                 mode="trilinear",
                 align_corners=False,
             )
             img = img.permute(0, 2, 1, 3, 4)
-            img[:, slices:, :, :, :] = 0
-            dim[1] = slices
+            img[:, depths:, :, :, :] = 0
+            dim[1] = depths
         return img, dim
 
-    def select_slice(self, img, dim):
+    def select_depth(self, img, dim):
         if dim[1] > 1:
             idx = random.randint(0, dim[1] - 1)
             img[:, 0, :, :, :] = img[:, idx, :, :, :]
@@ -164,9 +164,9 @@ class ImageDataset(Dataset):
         if dim[1] > 1 and random.random() < SLICE_AUGMENTATION_PROB:
             hasAugmented = True
             if dim[1] > 2 and random.random() < 0.5:
-                img, dim = self.slice_interpolation(img, dim)
+                img, dim = self.depth_interpolation(img, dim)
             else:
-                img, dim = self.select_slice(img, dim)
+                img, dim = self.select_depth(img, dim)
 
         if not hasAugmented or random.random() < IMAGE_AUGMENTATION_PROB:
             img = self.random_crop(img)
@@ -185,7 +185,7 @@ class ImageDataset(Dataset):
         p = self.dataset[idx]
         image_tensor = torch.zeros(
             self.config.max_time,
-            self.config.max_slice,
+            self.config.max_depth,
             self.config.num_channels,
             self.config.max_height,
             self.config.max_width,
@@ -241,8 +241,8 @@ class KNNDataset(Dataset):
         return len(self.dataset)
 
     def adjust_size(self, origDim):
-        if origDim[0] > self.config.max_slice:
-            newSlice = self.config.max_slice
+        if origDim[0] > self.config.max_depth:
+            newSlice = self.config.max_depth
         else:
             newSlice = origDim[0]
         return (newSlice, self.image_size, self.image_size)
@@ -295,7 +295,7 @@ class KNNDataset(Dataset):
         p, mod = self.dataset[idx]
         image_tensor = torch.zeros(
             self.config.max_time,
-            self.config.max_slice,
+            self.config.max_depth,
             self.config.num_channels,
             self.config.max_height,
             self.config.max_width,

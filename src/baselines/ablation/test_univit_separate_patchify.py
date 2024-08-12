@@ -8,7 +8,7 @@ from src.config import Config
 from torch.utils.data import DataLoader
 from src.models.univit_separate import UniViT
 from src.data.image_dataset import ImageDataset
-from src.models.downstream import DownstreamModel
+from src.models.downstream import LinearClassifier
 
 model_key = "univit_separate"
 
@@ -39,7 +39,7 @@ model = UniViT(
     config.max_height,
     config.max_width,
     config.max_time,
-    config.max_slice,
+    config.max_depth,
     config.num_channels,
     config.patch_size,
     config.representation_size,
@@ -105,7 +105,7 @@ for task in tune_data:
     else:
         continue
 
-    downstream = DownstreamModel(config.representation_size, label_size).to(device)
+    downstream = LinearClassifier(config.representation_size, label_size).to(device)
     optimizer = torch.optim.SGD(
         downstream.parameters(), lr=config.downstream_lr, momentum=0.9, weight_decay=0
     )

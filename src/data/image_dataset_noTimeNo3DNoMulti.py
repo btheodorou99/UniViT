@@ -29,7 +29,7 @@ class ImageDataset(Dataset):
             img = torch.tensor(np.load(image_path), dtype=torch.float)
             if len(img.shape) == 4:
                 img = img[:,:,:,0]
-            img = img[:, :, img.shape[2] // 2] # Take middle slice for 3D images
+            img = img[:, :, img.shape[2] // 2] # Take middle depth for 3D images
             img = img.unsqueeze(0).repeat(3, 1, 1)
         elif image_path.endswith('.jpg') or image_path.endswith('.png') or image_path.endswith('.tif'):
             img = Image.open(image_path).convert('RGB')
@@ -93,7 +93,7 @@ class KNNDataset(Dataset):
             img = torch.tensor(np.load(image_path), dtype=torch.float)
             if len(img.shape) == 4:
                 img = img[:,:,:,0]
-            img = img[:, :, img.shape[2] // 2] # Take middle slice for 3D images
+            img = img[:, :, img.shape[2] // 2] # Take middle depth for 3D images
             img = img.unsqueeze(0).repeat(3, 1, 1)
         elif image_path.endswith('.jpg') or image_path.endswith('.png') or image_path.endswith('.tif'):
             img = Image.open(image_path).convert('RGB')

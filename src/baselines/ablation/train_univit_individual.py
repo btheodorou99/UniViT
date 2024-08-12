@@ -78,29 +78,29 @@ def mim_loss_fn(student_emb, teacher_emb, center, mask):
 
 
 def frameSim_loss_fn(
-    time_seq1, slice_seq1, time_seq2, slice_seq2, time_mask, slice_mask
+    time_seq1, depth_seq1, time_seq2, depth_seq2, time_mask, depth_mask
 ):
     time_seq1 = F.normalize(time_seq1, dim=-1)
-    slice_seq1 = F.normalize(slice_seq1, dim=-1)
+    depth_seq1 = F.normalize(depth_seq1, dim=-1)
     time_seq2 = F.normalize(time_seq2, dim=-1)
-    slice_seq2 = F.normalize(slice_seq2, dim=-1)
+    depth_seq2 = F.normalize(depth_seq2, dim=-1)
     time_dists1 = 1 - F.cosine_similarity(time_seq1[:, :-1], time_seq2[:, 1:], dim=-1)
     time_dists2 = 1 - F.cosine_similarity(time_seq2[:, :-1], time_seq1[:, 1:], dim=-1)
     time_dists = (time_dists1 + time_dists2) * (~time_mask[:, 1:])
     time_loss = time_dists.sum() / (~time_mask[:, 1:]).sum()
     if time_loss.isnan():
         time_loss = torch.tensor(0.0).to(device)
-    slice_dists1 = 1 - F.cosine_similarity(
-        slice_seq1[:, :-1], slice_seq2[:, 1:], dim=-1
+    depth_dists1 = 1 - F.cosine_similarity(
+        depth_seq1[:, :-1], depth_seq2[:, 1:], dim=-1
     )
-    slice_dists2 = 1 - F.cosine_similarity(
-        slice_seq2[:, :-1], slice_seq1[:, 1:], dim=-1
+    depth_dists2 = 1 - F.cosine_similarity(
+        depth_seq2[:, :-1], depth_seq1[:, 1:], dim=-1
     )
-    slice_dists = (slice_dists1 + slice_dists2) * (~slice_mask[:, 1:])
-    slice_loss = slice_dists.sum() / (~slice_mask[:, 1:]).sum()
-    if slice_loss.isnan():
-        slice_loss = torch.tensor(0.0).to(device)
-    loss = time_loss + slice_loss
+    depth_dists = (depth_dists1 + depth_dists2) * (~depth_mask[:, 1:])
+    depth_loss = depth_dists.sum() / (~depth_mask[:, 1:]).sum()
+    if depth_loss.isnan():
+        depth_loss = torch.tensor(0.0).to(device)
+    loss = time_loss + depth_loss
     return loss
 
 
@@ -163,7 +163,7 @@ for modality in modalities:
         config.max_height,
         config.max_width,
         config.max_time,
-        config.max_slice,
+        config.max_depth,
         config.num_channels,
         config.patch_size,
         config.representation_size,
@@ -221,7 +221,7 @@ for modality in modalities:
                 batch_images, batch_dimensions
             )
 
-            cls_model1, embd_seq_model1, mask1, orig_mask1, time_mask1, slice_mask1 = (
+            cls_model1, embd_seq_model1, mask1, orig_mask1, time_mask1, depth_mask1 = (
                 model(
                     batch_images1.to(device),
                     batch_dimensions1.to(device),
@@ -229,7 +229,7 @@ for modality in modalities:
                     train=True,
                 )
             )
-            cls_model2, embd_seq_model2, mask2, orig_mask2, time_mask2, slice_mask2 = (
+            cls_model2, embd_seq_model2, mask2, orig_mask2, time_mask2, depth_mask2 = (
                 model(
                     batch_images2.to(device),
                     batch_dimensions2.to(device),
@@ -238,15 +238,15 @@ for modality in modalities:
                 )
             )
             time_seq_model1 = embd_seq_model1[:, : config.max_time]
-            slice_seq_model1 = embd_seq_model1[
-                :, config.max_time : config.max_time + config.max_slice
+            depth_seq_model1 = embd_seq_model1[
+                :, config.max_time : config.max_time + config.max_depth
             ]
-            embd_seq_model1 = embd_seq_model1[:, config.max_time + config.max_slice :]
+            embd_seq_model1 = embd_seq_model1[:, config.max_time + config.max_depth :]
             time_seq_model2 = embd_seq_model2[:, : config.max_time]
-            slice_seq_model2 = embd_seq_model2[
-                :, config.max_time : config.max_time + config.max_slice
+            depth_seq_model2 = embd_seq_model2[
+                :, config.max_time : config.max_time + config.max_depth
             ]
-            embd_seq_model2 = embd_seq_model2[:, config.max_time + config.max_slice :]
+            embd_seq_model2 = embd_seq_model2[:, config.max_time + config.max_depth :]
             with torch.no_grad():
                 cls_teacher1, embd_seq_teacher1, _, _, _, _ = teacher_model(
                     batch_images1.to(device),
@@ -257,11 +257,11 @@ for modality in modalities:
                 cls_teacher1 = cls_teacher1.to(device)
                 embd_seq_teacher1 = embd_seq_teacher1.to(device)
                 time_seq_teacher1 = embd_seq_teacher1[:, : config.max_time]
-                slice_seq_teacher1 = embd_seq_teacher1[
-                    :, config.max_time : config.max_time + config.max_slice
+                depth_seq_teacher1 = embd_seq_teacher1[
+                    :, config.max_time : config.max_time + config.max_depth
                 ]
                 embd_seq_teacher1 = embd_seq_teacher1[
-                    :, config.max_time + config.max_slice :
+                    :, config.max_time + config.max_depth :
                 ]
                 cls_teacher2, embd_seq_teacher2, _, _, _, _ = teacher_model(
                     batch_images2.to(device),
@@ -272,11 +272,11 @@ for modality in modalities:
                 cls_teacher2 = cls_teacher2.to(device)
                 embd_seq_teacher2 = embd_seq_teacher2.to(device)
                 time_seq_teacher2 = embd_seq_teacher2[:, : config.max_time]
-                slice_seq_teacher2 = embd_seq_teacher2[
-                    :, config.max_time : config.max_time + config.max_slice
+                depth_seq_teacher2 = embd_seq_teacher2[
+                    :, config.max_time : config.max_time + config.max_depth
                 ]
                 embd_seq_teacher2 = embd_seq_teacher2[
-                    :, config.max_time + config.max_slice :
+                    :, config.max_time + config.max_depth :
                 ]
 
             loss_cls = (
@@ -300,19 +300,19 @@ for modality in modalities:
             loss_frameSimilarity = (
                 frameSim_loss_fn(
                     time_seq_model1,
-                    slice_seq_model1,
+                    depth_seq_model1,
                     time_seq_teacher1,
-                    slice_seq_teacher1,
+                    depth_seq_teacher1,
                     time_mask1,
-                    slice_mask1,
+                    depth_mask1,
                 )
                 + frameSim_loss_fn(
                     time_seq_model2,
-                    slice_seq_model2,
+                    depth_seq_model2,
                     time_seq_teacher2,
-                    slice_seq_teacher2,
+                    depth_seq_teacher2,
                     time_mask2,
-                    slice_mask2,
+                    depth_mask2,
                 )
             ) / 2
             loss = loss_cls + loss_mim + loss_frameSimilarity

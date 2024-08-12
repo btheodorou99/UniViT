@@ -78,7 +78,7 @@ class ImageDataset(Dataset):
             img = torch.tensor(np.load(image_path), dtype=torch.float)
             if len(img.shape) == 4:
                 img = img[:, :, :, 0]
-            img = img[:, :, img.shape[2] // 2]  # Take middle slice for 3D images
+            img = img[:, :, img.shape[2] // 2]  # Take middle depth for 3D images
             img = img.unsqueeze(0).repeat(3, 1, 1)  # Repeat for 3 channels
             if self.patch_size is None:
                 img = self.transform(self.toImg(img))

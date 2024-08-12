@@ -234,3 +234,15 @@ class Unified_Model(nn.Module):
         #         pass
         # else:
         #     pass
+
+    def embed_patches(self, data):
+        self._tokenize(data)
+        if data["modality"] != "text":
+            # append cls token
+            x = data["data"]
+            cls_token = self.cls_token
+            cls_tokens = cls_token.expand(x.shape[0], -1, -1)
+            x = torch.cat((cls_tokens, x), dim=1)
+
+            x = self.fused_encoder(x, None)
+            return x[:, 1:]

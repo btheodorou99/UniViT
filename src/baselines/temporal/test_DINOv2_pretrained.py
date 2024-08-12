@@ -7,10 +7,10 @@ from tqdm import tqdm
 from sklearn import metrics
 from src.config import Config
 from torch.utils.data import DataLoader
-from src.models.downstream import DownstreamModel
-from src.data.image_dataset_pretrained import ImageDataset
+from src.models.downstream import LinearClassifier
+from src.baselines.temporal.data.image_dataset_pretrained import ImageDataset
 
-model_key = "dinov2_pretrained"
+model_key = "temporal__dinov2_pretrained"
 EMBEDDING_DIM = 768
 
 SEED = 4
@@ -19,22 +19,25 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 1
+cuda_num = 2
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
 
 data_dir = "/shared/eng/bpt3/data/UniViT/data"
 save_dir = "/shared/eng/bpt3/data/UniViT/save"
-tune_data = pickle.load(open(f"{data_dir}/tuningDataset.pkl", "rb"))
+tune_data = pickle.load(open(f"{data_dir}/tuningTemporalDataset.pkl", "rb"))
 tune_data = {
-    task: [p for p in tune_data[task] if p[4] is not None] for task in tune_data
+    task: [p for p in tune_data[task] if p[-1][4] is not None] for task in tune_data
 }
-test_data = pickle.load(open(f"{data_dir}/testingDataset.pkl", "rb"))
+test_data = pickle.load(open(f"{data_dir}/testingTemporalDataset.pkl", "rb"))
 test_data = {
-    task: [p for p in test_data[task] if p[4] is not None] for task in test_data
+    task: [p for p in test_data[task] if p[-1][4] is not None] for task in test_data
 }
 task_map = pickle.load(open(f"{data_dir}/taskMap.pkl", "rb"))
+valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t]]
+tune_data = {task: tune_data[task] for task in valid_tasks}
+test_data = {task: test_data[task] for task in valid_tasks}
 
 model = torch.hub.load("facebookresearch/dinov2", "dinov2_vitb14").to(device)
 model.eval()
@@ -44,13 +47,15 @@ allResults = {}
 for task in tune_data:
     print(f"\n\nDownstream Evaluation on {task}")
     task_tune = tune_data[task]
-    label = task_tune[0][4]
+    label = task_tune[0][0][4]
     if isinstance(label, list):
         label_size = len(label)
         multiclass = False
-    else:
-        label_size = len(set([p[4] for p in task_tune]))
+    elif isinstance(label, int):
+        label_size = len(set([p[0][4] for p in task_tune]))
         multiclass = True
+    else:
+        continue
 
     task_tune_data = ImageDataset(
         task_tune,
@@ -106,7 +111,7 @@ for task in tune_data:
     else:
         continue
 
-    downstream = DownstreamModel(EMBEDDING_DIM, label_size).to(device)
+    downstream = LinearClassifier(EMBEDDING_DIM, label_size).to(device)
     optimizer = torch.optim.SGD(
         downstream.parameters(), lr=config.downstream_lr, momentum=0.9, weight_decay=0
     )

@@ -7,9 +7,9 @@ from tqdm import tqdm
 from sklearn import metrics
 from src.config import Config
 from torch.utils.data import DataLoader
-from src.models.downstream import DownstreamModel
-from src.data.image_dataset_pretrained import ImageDataset
+from src.models.downstream import LinearClassifier
 from src.baselines.external.models.ibot import vit_base
+from src.data.image_dataset_pretrained import ImageDataset
 
 model_key = "ibot_pretrained"
 EMBEDDING_DIM = 768
@@ -20,7 +20,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 2
+cuda_num = 1
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
@@ -49,6 +49,9 @@ model.to(device)
 
 allResults = {}
 for task in tune_data:
+    if task not in task_map:
+        continue
+    
     print(f"\n\nDownstream Evaluation on {task}")
     task_tune = tune_data[task]
     label = task_tune[0][4]
@@ -113,7 +116,7 @@ for task in tune_data:
     else:
         continue
 
-    downstream = DownstreamModel(EMBEDDING_DIM, label_size).to(device)
+    downstream = LinearClassifier(EMBEDDING_DIM, label_size).to(device)
     optimizer = torch.optim.SGD(
         downstream.parameters(), lr=config.downstream_lr, momentum=0.9, weight_decay=0
     )

@@ -583,6 +583,18 @@ taskMap = {
     "T1C MRI (BraTS-GLI)": "Segmentation",
     "T1C MRI (BraTS-MET)": "Segmentation",
     "T1C MRI (BraTS-PED)": "Segmentation",
+    "T1N MRI (BraTS-GoAT)": "Segmentation",
+    "T1N MRI (BraTS-GLI)": "Segmentation",
+    "T1N MRI (BraTS-MET)": "Segmentation",
+    "T1N MRI (BraTS-PED)": "Segmentation",
+    "T2W MRI (BraTS-GoAT)": "Segmentation",
+    "T2W MRI (BraTS-GLI)": "Segmentation",
+    "T2W MRI (BraTS-MET)": "Segmentation",
+    "T2W MRI (BraTS-PED)": "Segmentation",
+    "T2F MRI (BraTS-GoAT)": "Segmentation",
+    "T2F MRI (BraTS-GLI)": "Segmentation",
+    "T2F MRI (BraTS-MET)": "Segmentation",
+    "T2F MRI (BraTS-PED)": "Segmentation",
     "MRI (BraTS-MEN-RT)": "Segmentation",
 }
 flatTasks = set(

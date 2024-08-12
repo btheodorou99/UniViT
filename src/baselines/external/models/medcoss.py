@@ -278,7 +278,7 @@ class UniViT(nn.Module):
         max_height_size: int,
         max_width_size: int,
         max_time_size: int,
-        max_slice_size: int,
+        max_depth_size: int,
         num_channels: int,
         patch_size: int,
         representation_size: int,
@@ -298,7 +298,7 @@ class UniViT(nn.Module):
         torch._assert(max_width_size % patch_size == 0, "Input width indivisible by patch size!")
         self.image_height = max_height_size
         self.image_width = max_width_size
-        self.image_slice = max_slice_size
+        self.image_depth = max_depth_size
         self.image_time = max_time_size
         self.image_channels = num_channels
         self.patch_size = patch_size
@@ -311,10 +311,10 @@ class UniViT(nn.Module):
         self.norm_layer = norm_layer
         
         self.patchify_all = Conv4d(
-            in_channels=self.image_channels, out_channels=representation_size, kernel_size=(max_time_size, max_slice_size, patch_size, patch_size), stride=(max_time_size, max_slice_size, patch_size, patch_size)
+            in_channels=self.image_channels, out_channels=representation_size, kernel_size=(max_time_size, max_depth_size, patch_size, patch_size), stride=(max_time_size, max_depth_size, patch_size, patch_size)
         )
         self.patchify_noTime = nn.Conv3d(
-            in_channels=self.image_channels, out_channels=representation_size, kernel_size=(max_slice_size, patch_size, patch_size), stride=(max_slice_size, patch_size, patch_size)
+            in_channels=self.image_channels, out_channels=representation_size, kernel_size=(max_depth_size, patch_size, patch_size), stride=(max_depth_size, patch_size, patch_size)
         )
         self.patchify_no3D = nn.Conv3d(
             in_channels=self.image_channels, out_channels=representation_size, kernel_size=(max_time_size, patch_size, patch_size), stride=(max_time_size, patch_size, patch_size)
@@ -371,7 +371,7 @@ class UniViT(nn.Module):
         b, t, s, c, h, w = x.shape
         p = self.patch_size
         torch._assert(t == self.image_time, f"Wrong image time dimension! Expected {self.image_time} but got {t}!")
-        torch._assert(s == self.image_slice, f"Wrong image slice dimension! Expected {self.image_slice} but got {s}!")
+        torch._assert(s == self.image_depth, f"Wrong image depth dimension! Expected {self.image_depth} but got {s}!")
         torch._assert(c == self.image_channels, f"Wrong number of image channels! Expected {self.image_channels} but got {c}!")
         torch._assert(h == self.image_height, f"Wrong image height! Expected {self.image_height} but got {h}!")
         torch._assert(w == self.image_width, f"Wrong image width! Expected {self.image_width} but got {w}!")
@@ -444,19 +444,19 @@ class UniViT(nn.Module):
         b, t, s, c, h, w = img.shape
         img = img.permute(0, 3, 1, 2, 4, 5)
         time_patches = 1
-        slice_patches = 1
+        depth_patches = 1
         height_patches = h // self.patch_size
         width_patches = w // self.patch_size
         if imgType == 1: # ALL
-            img = img.reshape(b, c, time_patches, self.image_time, slice_patches, self.image_slice, height_patches, self.patch_size, width_patches, self.patch_size)
+            img = img.reshape(b, c, time_patches, self.image_time, depth_patches, self.image_depth, height_patches, self.patch_size, width_patches, self.patch_size)
             img = torch.einsum('nctjdkhpwq->ntdhwjkpqc', img)
-            img = img.reshape(b, time_patches * slice_patches * height_patches * width_patches, self.image_time * self.image_slice * self.patch_size * self.patch_size * c)
+            img = img.reshape(b, time_patches * depth_patches * height_patches * width_patches, self.image_time * self.image_depth * self.patch_size * self.patch_size * c)
             return img
         elif imgType == 2: # NO TIME
             img = img[:,:,:,0,:]
-            img = img.reshape(b, c, slice_patches, self.image_slice, height_patches, self.patch_size, width_patches, self.patch_size)
+            img = img.reshape(b, c, depth_patches, self.image_depth, height_patches, self.patch_size, width_patches, self.patch_size)
             img = torch.einsum('ncdkhpwq->ndhwkpqc', img)            
-            img = img.reshape(b, slice_patches * height_patches * width_patches, self.image_slice * self.patch_size * self.patch_size * c)
+            img = img.reshape(b, depth_patches * height_patches * width_patches, self.image_depth * self.patch_size * self.patch_size * c)
             return img
         elif imgType == 3: # NO 3D
             img = img[:,:,:,:,0]

@@ -7,7 +7,7 @@ from tqdm import tqdm
 from sklearn import metrics
 from src.config import Config
 from torch.utils.data import DataLoader
-from src.models.downstream import DownstreamModel
+from src.models.downstream import LinearClassifier
 from src.data.image_dataset_pretrained import ImageDataset
 from src.baselines.external.models.unimodel_2D import Unified_Model as Model2D
 from src.baselines.external.models.unimodel_3D import Unified_Model as Model3D
@@ -21,7 +21,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 2
+cuda_num = 1
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
@@ -43,6 +43,9 @@ chkpt = torch.load(f"{save_dir}/medcoss.pt", map_location="cpu")
 
 allResults = {}
 for task in tune_data:
+    if task not in task_map:
+        continue
+    
     print(f"\n\nDownstream Evaluation on {task}")
     task_tune = tune_data[task]
     label = task_tune[0][4]
@@ -57,7 +60,7 @@ for task in tune_data:
         model = Model2D((config.max_height, config.max_height))
     else:
         model = Model3D(
-            (config.max_height, config.max_height, max(config.max_slice, 16))
+            (config.max_height, config.max_height, max(config.max_depth, 16))
         )
 
     model.load_state_dict(chkpt["model"], strict=False)
@@ -69,7 +72,7 @@ for task in tune_data:
         "cpu",
         patch_size=16,
         image_size=config.max_height,
-        image_depth=config.max_slice if task not in flat_tasks else None,
+        image_depth=config.max_depth if task not in flat_tasks else None,
         augment=False,
         downstream=True,
         multiclass=multiclass,
@@ -87,7 +90,7 @@ for task in tune_data:
         "cpu",
         patch_size=16,
         image_size=config.max_height,
-        image_depth=config.max_slice if task not in flat_tasks else None,
+        image_depth=config.max_depth if task not in flat_tasks else None,
         augment=False,
         downstream=True,
         multiclass=multiclass,
@@ -111,7 +114,7 @@ for task in tune_data:
     else:
         continue
 
-    downstream = DownstreamModel(EMBEDDING_DIM, label_size).to(device)
+    downstream = LinearClassifier(EMBEDDING_DIM, label_size).to(device)
     optimizer = torch.optim.SGD(
         downstream.parameters(), lr=config.downstream_lr, momentum=0.9, weight_decay=0
     )
