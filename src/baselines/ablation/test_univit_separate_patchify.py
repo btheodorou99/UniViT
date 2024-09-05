@@ -8,7 +8,8 @@ from src.config import Config
 from torch.utils.data import DataLoader
 from src.models.univit_separate import UniViT
 from src.data.image_dataset import ImageDataset
-from src.models.downstream import LinearClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.multioutput import MultiOutputClassifier
 
 model_key = "univit_separate"
 
@@ -18,13 +19,14 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 0
+cuda_num = 4
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
 
 data_dir = "/shared/eng/bpt3/data/UniViT/data"
 save_dir = "/shared/eng/bpt3/data/UniViT/save"
+save_dir = "/srv/local/data/bpt3/UniViT/save"
 tune_data = pickle.load(open(f"{data_dir}/tuningDataset.pkl", "rb"))
 tune_data = {
     task: [[p] for p in tune_data[task] if p[4] is not None] for task in tune_data
@@ -62,6 +64,11 @@ model.requires_grad_(False)
 
 allResults = {}
 for task in tune_data:
+    if "Hist" in task:
+        continue
+    if task not in task_map or task_map[task] not in ["Multi-Class Classification", "Multi-Label Classification"]:
+        continue
+    
     print(f"\n\nDownstream Evaluation on {task}")
     task_tune = tune_data[task]
     label = task_tune[0][0][4]
@@ -94,16 +101,11 @@ for task in tune_data:
     )
 
     taskType = task_map[task]
+    downstream = LogisticRegression(max_iter=10000)
     if taskType == "Multi-Label Classification":
-        loss_fn = torch.nn.BCELoss()
-        train_activation = torch.nn.Sigmoid()
-        test_activation = torch.nn.Sigmoid()
-    elif taskType == "Multi-Class Classification":
-        loss_fn = torch.nn.CrossEntropyLoss()
-        train_activation = torch.nn.Identity()
-        test_activation = torch.nn.Softmax(dim=1)
-    else:
-        continue
+        downstream = MultiOutputClassifier(downstream)
+    X = []
+    y = []
 
     downstream = LinearClassifier(config.representation_size, label_size).to(device)
     optimizer = torch.optim.SGD(
@@ -184,12 +186,13 @@ for task in tune_data:
         }
         print(taskResults)
     elif taskType == "Multi-Class Classification":
-        task_preds = np.array(task_preds)
+        task_probs = np.array(task_preds)
         task_labels = np.array(task_labels)
-        task_preds = np.argmax(task_preds, axis=1)
+        task_preds = np.argmax(task_probs, axis=1)
         acc = metrics.accuracy_score(task_labels, task_preds)
         f1 = metrics.f1_score(task_labels, task_preds, average="macro")
-        taskResults = {"Accuracy": acc, "F1": f1}
+        auroc = metrics.roc_auc_score(task_labels, task_probs, average="macro", multi_class="ovr")
+        taskResults = {"Accuracy": acc, "F1": f1, "AUROC": auroc}
         print(taskResults)
 
     allResults[task] = taskResults

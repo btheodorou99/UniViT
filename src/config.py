@@ -35,8 +35,7 @@ class Config(object):
         tot_steps=500000,
         num_workers=8,
         downstream_epochs=10,
-        downstream_batch_size=4,
-        downstream_effective_batch_size=64,
+        downstream_batch_size=32,
         downstream_lr=1e-3,
     ):
         self.max_height = max_height
@@ -68,5 +67,4 @@ class Config(object):
         self.num_workers = num_workers
         self.downstream_epochs = downstream_epochs
         self.downstream_batch_size = downstream_batch_size
-        self.downstream_effective_batch_size = downstream_effective_batch_size
         self.downstream_lr = downstream_lr

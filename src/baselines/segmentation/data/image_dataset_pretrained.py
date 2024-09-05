@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torchvision import transforms
 from torch.utils.data import Dataset
 
-SEGMENTATION_THRESHOLD = 0.1
+SEGMENTATION_THRESHOLD = 0.05
 
 class ImageDataset(Dataset):
     def __init__(
@@ -54,8 +54,7 @@ class ImageDataset(Dataset):
             if len(img.shape) == 4:
                 img = img[:, :, :, 0]
             img = img.permute(2, 0, 1)
-            if channels:
-                img = img.unsqueeze(0)  # Only 1 channel
+            img = img.unsqueeze(0)  # Only 1 channel
             if self.patch_size is None:
                 img = self.transform(self.toImg(img))
             elif self.image_size is not None:
@@ -65,6 +64,8 @@ class ImageDataset(Dataset):
                     mode="trilinear",
                     align_corners=False,
                 ).squeeze(0)
+            if not channels:
+                img = img.squeeze(0)
         else:
             raise ValueError("Invalid 3D image format")
 

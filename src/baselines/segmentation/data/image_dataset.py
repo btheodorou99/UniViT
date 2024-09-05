@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torchvision import transforms
 from torch.utils.data import Dataset
 
-SEGMENTATION_THRESHOLD = 0.1
+SEGMENTATION_THRESHOLD = 0.05
 
 class ImageDataset(Dataset):
     def __init__(self, dataset, config, device):
@@ -28,8 +28,7 @@ class ImageDataset(Dataset):
             if len(img.shape) == 4:
                 img = img[:, :, :, 0]
             img = img.permute(2, 0, 1)
-            if channels:
-                img = img.unsqueeze(1).repeat(1, 3, 1, 1)
+            img = img.unsqueeze(1).repeat(1, 3, 1, 1)
         elif (
             image_path.endswith(".jpg")
             or image_path.endswith(".png")
@@ -67,7 +66,10 @@ class ImageDataset(Dataset):
                     align_corners=True,
                 )
                 img = img.squeeze(0).permute(1, 0, 2, 3)
-
+                
+        if not channels:
+            img = img[:, 0, :, :]
+            
         return img
 
     def __getitem__(self, idx):

@@ -1,3 +1,4 @@
+import time
 import torch
 import random
 import numpy as np
@@ -15,7 +16,7 @@ IMAGE_AUGMENTATION_PROB = 4 / 5
 
 class ImageDataset(Dataset):
     def __init__(
-        self, dataset, config, device, augment=False, downstream=False, multiclass=False
+        self, dataset, config, device, augment=False, downstream=False, multiclass=False, depth=True,
     ):
         self.dataset = dataset
         self.config = config
@@ -23,6 +24,7 @@ class ImageDataset(Dataset):
         self.init_augment = augment
         self.downstream = downstream
         self.multiclass = multiclass
+        self.depth = depth
         self.transform = transforms.Compose(
             [
                 transforms.ToTensor(),
@@ -74,6 +76,10 @@ class ImageDataset(Dataset):
             raise ValueError("Invalid image format")
 
         currDim = tuple(img[:, 0, :, :].shape)
+        if not self.depth:
+            img = img[img.shape[0] // 2].unsqueeze(0)
+            currDim = tuple(img[:, 0, :, :].shape)
+            chosenDim = (1, chosenDim[1], chosenDim[2])
         if currDim != chosenDim:
             if (
                 currDim[1] == chosenDim[2]
@@ -100,6 +106,19 @@ class ImageDataset(Dataset):
                 img = img.squeeze(0).permute(1, 0, 2, 3)
 
         return img
+    
+    def load_image_with_retries(self, path, chosenDim, max_attempts=5, delay=1):
+        attempts = 0
+        errMessage = ""
+        while attempts < max_attempts:
+            try:
+                with open(path, 'rb') as f:
+                    image_tensor = self.load_image(path, chosenDim)
+                return image_tensor  # Return the loaded image if successful
+            except IOError as e:
+                errMessage = str(e)
+                time.sleep(delay * (2 ** attempts))
+        raise Exception(f"Failed to load image after {max_attempts} attempts: {errMessage}")
 
     def random_crop(self, img, dim):
         crop_height = random.randint(
@@ -236,7 +255,7 @@ class ImageDataset(Dataset):
         chosenDim = self.adjust_size(chosenDim)
         dimension_tensor[0] = len(p)
         for j, (path, _, _, _, labels) in enumerate(p):
-            img = self.load_image(path, chosenDim)
+            img = self.load_image_with_retries(path, chosenDim)
             image_tensor[j, : img.shape[0], :, : img.shape[2], : img.shape[3]] = img
             dimension_tensor[1] = img.shape[0]
             dimension_tensor[2] = img.shape[2]
@@ -589,6 +608,20 @@ class KNNDataset(Dataset):
                 img = img.squeeze(0).permute(1, 0, 2, 3)
 
         return img
+    
+    def load_image_with_retries(self, path, chosenDim, max_attempts=5, delay=1):
+        attempts = 0
+        errMessage = ""
+        while attempts < max_attempts:
+            try:
+                with open(path, 'rb') as f:
+                    image_tensor = self.load_image(path, chosenDim)
+                return image_tensor  # Return the loaded image if successful
+            except IOError as e:
+                errMessage = str(e)
+                time.sleep(delay * (2 ** attempts))
+        raise Exception(f"Failed to load image after {max_attempts} attempts: {errMessage}")
+
 
     def __getitem__(self, idx):
         p, mod = self.dataset[idx]
@@ -611,7 +644,7 @@ class KNNDataset(Dataset):
         chosenDim = self.adjust_size(chosenDim)
         dimension_tensor[0] = len(p)
         for j, (path, _, _, _, labels) in enumerate(p):
-            img = self.load_image(path, chosenDim)
+            img = self.load_image_with_retries(path, chosenDim)
             image_tensor[j, : img.shape[0], :, : img.shape[2], : img.shape[3]] = img
             dimension_tensor[1] = img.shape[0]
             dimension_tensor[2] = img.shape[2]

@@ -51,13 +51,13 @@ knn_train_loader = DataLoader(
     knn_train_data,
     batch_size=config.batch_size,
     shuffle=False,
-    num_workers=config.num_workers,
+    num_workers=int(0.5*config.num_workers),
 )
 knn_test_loader = DataLoader(
     knn_test_data,
     batch_size=config.batch_size,
     shuffle=False,
-    num_workers=config.num_workers,
+    num_workers=int(0.5*config.num_workers),
 )
 modalities = [
     "Chest X-Ray (MIMIC)",

@@ -1,3 +1,4 @@
+import os
 import torch
 import random
 import pickle
@@ -26,16 +27,16 @@ if torch.cuda.is_available():
 
 data_dir = "/shared/eng/bpt3/data/UniViT/data"
 save_dir = "/shared/eng/bpt3/data/UniViT/save"
-tune_data = pickle.load(open(f"{data_dir}/tuningTemporalDataset.pkl", "rb"))
+tune_data = pickle.load(open(f"{data_dir}/tuningDataset.pkl", "rb"))
 tune_data = {
-    task: [p for p in tune_data[task] if p[4] is not None] for task in tune_data
+    task: [p for p in tune_data[task] if p[4] is not None and isinstance(p[4], str) and os.path.exists(p[4])] for task in tune_data
 }
-test_data = pickle.load(open(f"{data_dir}/testingTemporalDataset.pkl", "rb"))
+test_data = pickle.load(open(f"{data_dir}/testingDataset.pkl", "rb"))
 test_data = {
-    task: [p for p in test_data[task] if p[4] is not None] for task in test_data
+    task: [p for p in test_data[task] if p[4] is not None and isinstance(p[4], str) and os.path.exists(p[4])] for task in test_data
 }
 task_map = pickle.load(open(f"{data_dir}/taskMap.pkl", "rb"))
-valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t] if t in task_map and task_map[t] == "Segmentation"]
+valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t] if t in task_map and task_map[t] == "Segmentation" and 'T1C' in t]
 tune_data = {task: tune_data[task] for task in valid_tasks}
 test_data = {task: test_data[task] for task in valid_tasks}
 
@@ -86,14 +87,13 @@ for task in valid_tasks:
         num = torch.sum(torch.mul(pred2, target2), dim=-1)
         den = torch.sum(pred2, dim=-1) + torch.sum(target2, dim=-1)
         dice_score = (2 * num) / (den + 1)
-        dice_score = dice_score[target[:,:,0,0,0]!=-1]
         dice_loss = 1 - dice_score.mean()
         return dice_loss
 
     downstream = SegmentationModel(config.representation_size, config.patch_size, config.max_depth).to(device)
     optimizer = torch.optim.Adam(downstream.parameters(), lr=config.downstream_lr)
     for epoch in tqdm(
-        range(config.downstream_epochs), leave=False, desc=f"{task} Tuning"
+        range(10*config.downstream_epochs), leave=False, desc=f"{task} Tuning"
     ):
         for batch_images, _, batch_labels in tqdm(
             task_tune_loader, desc=f"{task} Tuning Epoch {epoch+1}", leave=False
@@ -102,7 +102,7 @@ for task in valid_tasks:
             batch_labels = batch_labels.to(device)
             
             # Flatten everything for 2D embedding before 3D segmentation
-            bs, depth, channels, height, width = batch_images.shape
+            bs, channels, depth, height, width = batch_images.shape
             batch_images = batch_images.view(-1, channels, height, width)
             with torch.no_grad():
                 representations = model.embed_patches(batch_images)
@@ -122,7 +122,7 @@ for task in valid_tasks:
         batch_labels = batch_labels.numpy()
         
         # Flatten everything for 2D embedding before 3D segmentation
-        bs, depth, channels, height, width = batch_images.shape
+        bs, channels, depth, height, width = batch_images.shape
         batch_images = batch_images.view(-1, channels, height, width)
         with torch.no_grad():
             representations = model.embed_patches(batch_images)
@@ -132,6 +132,9 @@ for task in valid_tasks:
             
 
         for i in range(len(predictions)):
+            if batch_labels[i].max() == 0:
+                continue
+            
             dice_values.append(metrics.dc(predictions[i], batch_labels[i]))
             hausdorff_values.append(metrics.hd(predictions[i], batch_labels[i]))
 

@@ -25,6 +25,7 @@ device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu"
 config.batch_size = config.effective_batch_size
 data_dir = "/shared/eng/bpt3/data/UniViT/data"
 save_dir = "/shared/eng/bpt3/data/UniViT/save"
+save_dir = "/srv/local/data/bpt3/UniViT/save"
 train_data = pickle.load(open(f"{data_dir}/trainingDataset.pkl", "rb"))
 train_data = ImageDataset(train_data, config, "cpu")
 train_loader = DataLoader(

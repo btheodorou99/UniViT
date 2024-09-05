@@ -1,3 +1,4 @@
+import os
 import torch
 import random
 import pickle
@@ -11,7 +12,7 @@ from torch.utils.data import DataLoader
 from src.models.downstream import SegmentationModel
 from src.baselines.segmentation.data.image_dataset import ImageDataset
 
-model_key = "univit"
+model_key = "univit_more"
 
 SEED = 4
 random.seed(SEED)
@@ -19,23 +20,24 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 0
+cuda_num = 1
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
 
 data_dir = "/shared/eng/bpt3/data/UniViT/data"
 save_dir = "/shared/eng/bpt3/data/UniViT/save"
-tune_data = pickle.load(open(f"{data_dir}/tuningTemporalDataset.pkl", "rb"))
+# save_dir = "/srv/local/data/bpt3/UniViT/save"
+tune_data = pickle.load(open(f"{data_dir}/tuningDataset.pkl", "rb"))
 tune_data = {
-    task: [[p] for p in tune_data[task] if p[-1][4] is not None] for task in tune_data
+    task: [[p] for p in tune_data[task] if p[4] is not None and isinstance(p[4], str) and os.path.exists(p[4])] for task in tune_data
 }
-test_data = pickle.load(open(f"{data_dir}/testingTemporalDataset.pkl", "rb"))
+test_data = pickle.load(open(f"{data_dir}/testingDataset.pkl", "rb"))
 test_data = {
-    task: [[p] for p in test_data[task] if p[-1][4] is not None] for task in test_data
+    task: [[p] for p in test_data[task] if p[4] is not None and isinstance(p[4], str) and os.path.exists(p[4])] for task in test_data
 }
 task_map = pickle.load(open(f"{data_dir}/taskMap.pkl", "rb"))
-valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t] if t in task_map and task_map[t] == "Segmentation"]
+valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t] if t in task_map and task_map[t] == "Segmentation" and 'T1C' in t]
 tune_data = {task: tune_data[task] for task in valid_tasks}
 test_data = {task: test_data[task] for task in valid_tasks}
 
@@ -91,14 +93,13 @@ for task in valid_tasks:
         num = torch.sum(torch.mul(pred2, target2), dim=-1)
         den = torch.sum(pred2, dim=-1) + torch.sum(target2, dim=-1)
         dice_score = (2 * num) / (den + 1)
-        dice_score = dice_score[target[:,:,0,0,0]!=-1]
         dice_loss = 1 - dice_score.mean()
         return dice_loss
 
     downstream = SegmentationModel(config.representation_size, config.patch_size, config.max_depth).to(device)
     optimizer = torch.optim.Adam(downstream.parameters(), lr=config.downstream_lr)
     for epoch in tqdm(
-        range(config.downstream_epochs), leave=False, desc=f"{task} Tuning"
+        range(10*config.downstream_epochs), leave=False, desc=f"{task} Tuning"
     ):
         for batch_images, batch_dimensions, batch_labels in tqdm(
             task_tune_loader, desc=f"{task} Tuning Epoch {epoch+1}", leave=False
@@ -125,6 +126,9 @@ for task in valid_tasks:
             predictions = downstream(representations)
             predictions = (predictions > 0.5).cpu().numpy()
         for i in range(len(predictions)):
+            if batch_labels[i].max() == 0:
+                continue
+            
             dice_values.append(metrics.dc(predictions[i], batch_labels[i]))
             hausdorff_values.append(metrics.hd(predictions[i], batch_labels[i]))
 

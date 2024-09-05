@@ -7,7 +7,8 @@ from tqdm import tqdm
 from sklearn import metrics
 from src.config import Config
 from torch.utils.data import DataLoader
-from src.models.downstream import LinearClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.multioutput import MultiOutputClassifier
 from src.baselines.external.models.ibot import vit_base
 from src.data.image_dataset_pretrained import ImageDataset
 
@@ -20,7 +21,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 1
+cuda_num = 0
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
@@ -31,11 +32,14 @@ tune_data = pickle.load(open(f"{data_dir}/tuningDataset.pkl", "rb"))
 tune_data = {
     task: [p for p in tune_data[task] if p[4] is not None] for task in tune_data
 }
+tune_data['All PET'] = tune_data['Amyloid PET'] + tune_data['FDG PET']
 test_data = pickle.load(open(f"{data_dir}/testingDataset.pkl", "rb"))
 test_data = {
     task: [p for p in test_data[task] if p[4] is not None] for task in test_data
 }
+test_data['All PET'] = test_data['Amyloid PET'] + test_data['FDG PET']
 task_map = pickle.load(open(f"{data_dir}/taskMap.pkl", "rb"))
+task_map['All PET'] = 'Multi-Class Classification'
 
 model = vit_base()
 model.load_state_dict(
@@ -49,7 +53,9 @@ model.to(device)
 
 allResults = {}
 for task in tune_data:
-    if task not in task_map:
+    if 'All PET' not in task:
+        continue
+    if task not in task_map or task_map[task] not in ["Multi-Class Classification", "Multi-Label Classification"]:
         continue
     
     print(f"\n\nDownstream Evaluation on {task}")
@@ -67,11 +73,7 @@ for task in tune_data:
         config,
         "cpu",
         patch_size=14,
-        image_size=(
-            320
-            if task == "Chest X-Ray (CheXpert)"
-            else 450 if task == "Skin Lesion" else 256
-        ),
+        image_size=224,
         augment=False,
         downstream=True,
         multiclass=multiclass,
@@ -88,11 +90,7 @@ for task in tune_data:
         config,
         "cpu",
         patch_size=14,
-        image_size=(
-            320
-            if task == "Chest X-Ray (CheXpert)"
-            else 450 if task == "Skin Lesion" else 256
-        ),
+        image_size=224,
         augment=False,
         downstream=True,
         multiclass=multiclass,
@@ -105,38 +103,20 @@ for task in tune_data:
     )
 
     taskType = task_map[task]
+    downstream = LogisticRegression(max_iter=10000)
     if taskType == "Multi-Label Classification":
-        loss_fn = torch.nn.BCELoss()
-        train_activation = torch.nn.Sigmoid()
-        test_activation = torch.nn.Sigmoid()
-    elif taskType == "Multi-Class Classification":
-        loss_fn = torch.nn.CrossEntropyLoss()
-        train_activation = torch.nn.Identity()
-        test_activation = torch.nn.Softmax(dim=1)
-    else:
-        continue
+        downstream = MultiOutputClassifier(downstream)
+    X = []
+    y = []
+    
+    for batch_images, batch_labels in tqdm(task_tune_loader, desc=f"{task} Tuning", leave=False):
+        batch_images = batch_images.to(device)
+        with torch.no_grad():
+            representations = model(batch_images)
+            X.extend(representations.cpu().tolist())
+            y.extend(batch_labels.cpu().tolist())
 
-    downstream = LinearClassifier(EMBEDDING_DIM, label_size).to(device)
-    optimizer = torch.optim.SGD(
-        downstream.parameters(), lr=config.downstream_lr, momentum=0.9, weight_decay=0
-    )
-    for epoch in tqdm(
-        range(config.downstream_epochs), leave=False, desc=f"{task} Tuning"
-    ):
-        batches_since_step = 0
-        for batch_images, batch_labels in tqdm(
-            task_tune_loader, desc=f"{task} Tuning Epoch {epoch+1}", leave=False
-        ):
-            batch_images = batch_images.to(device)
-            batch_labels = batch_labels.to(device)
-            with torch.no_grad():
-                representations = model(batch_images)
-            predictions = downstream(representations)
-            predictions = train_activation(predictions)
-            loss = loss_fn(predictions, batch_labels)
-            loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
+    downstream.fit(X, y)
 
     task_preds = []
     task_labels = []
@@ -144,12 +124,12 @@ for task in tune_data:
         task_test_loader, desc=f"{task} Testing", leave=False
     ):
         batch_images = batch_images.to(device)
-        batch_labels = batch_labels.to(device)
         with torch.no_grad():
             representations = model(batch_images)
-            predictions = downstream(representations)
-            predictions = test_activation(predictions)
-            task_preds.extend(predictions.cpu().tolist())
+            predictions = downstream.predict_proba(representations.cpu().numpy())
+            if taskType == "Multi-Label Classification":
+                predictions = np.array(predictions).transpose(1, 0, 2)[:,:,1]
+            task_preds.extend(predictions.tolist())
             task_labels.extend(batch_labels.cpu().tolist())
 
     if taskType == "Multi-Label Classification":
@@ -195,12 +175,13 @@ for task in tune_data:
         }
         print(taskResults)
     elif taskType == "Multi-Class Classification":
-        task_preds = np.array(task_preds)
+        task_probs = np.array(task_preds)
         task_labels = np.array(task_labels)
-        task_preds = np.argmax(task_preds, axis=1)
+        task_preds = np.argmax(task_probs, axis=1)
         acc = metrics.accuracy_score(task_labels, task_preds)
         f1 = metrics.f1_score(task_labels, task_preds, average="macro")
-        taskResults = {"Accuracy": acc, "F1": f1}
+        auroc = metrics.roc_auc_score(task_labels, task_probs, average="macro", multi_class="ovr")
+        taskResults = {"Accuracy": acc, "F1": f1, "AUROC": auroc}
         print(taskResults)
 
     allResults[task] = taskResults

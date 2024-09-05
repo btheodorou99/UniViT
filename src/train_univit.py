@@ -18,7 +18,7 @@ from src.data.image_dataset import ImageDataset, KNNDataset
 # torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 0
+cuda_num = 4
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 # if torch.cuda.is_available():
 #     torch.cuda.manual_seed_all(SEED)
@@ -33,7 +33,7 @@ train_loader = DataLoader(
     train_data,
     batch_size=config.batch_size,
     shuffle=True,
-    num_workers=config.num_workers,
+    num_workers=int(0.5*config.num_workers),
 )
 knn_data = {
     mod: random.choices(data, k=250)
@@ -48,13 +48,13 @@ knn_train_loader = DataLoader(
     knn_train_data,
     batch_size=config.batch_size,
     shuffle=False,
-    num_workers=config.num_workers,
+    num_workers=int(0.5*config.num_workers),
 )
 knn_test_loader = DataLoader(
     knn_test_data,
     batch_size=config.batch_size,
     shuffle=False,
-    num_workers=config.num_workers,
+    num_workers=int(0.5*config.num_workers),
 )
 
 model = UniViT(
@@ -78,9 +78,9 @@ model = UniViT(
 optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr)
 model = model.to(device)
 
-if os.path.exists(f"{save_dir}/univit.pt"):
+if os.path.exists(f"{save_dir}/univit_more.pt"):
     print("Loading previous model")
-    checkpoint = torch.load(f"{save_dir}/univit.pt", map_location="cpu")
+    checkpoint = torch.load(f"{save_dir}/univit_more.pt", map_location="cpu")
     model.load_state_dict(checkpoint["model"])
     optimizer.load_state_dict(checkpoint["optimizer"])
     num_steps = checkpoint["steps"]
@@ -187,7 +187,7 @@ def validate(model, train, test):
 # Train Model
 model.train()
 pbar = tqdm(
-    total=config.tot_steps, leave=True, desc="Current Loss: N/A; Current KNN Acc: N/A"
+    total=2*config.tot_steps, leave=True, desc="Current Loss: N/A; Current KNN Acc: N/A"
 )
 pbar.update(num_steps)
 
@@ -196,7 +196,7 @@ knn_plot = []
 knn_acc = 0
 center_cls = torch.zeros(1, config.projection_size).to(device)
 center_patch = torch.zeros(1, 1, config.projection_size).to(device)
-while num_steps < config.tot_steps:
+while num_steps < 2*config.tot_steps:
     running_loss = []
     for batch_images, batch_dimensions in train_loader:
         batch_images1, batch_dimensions1 = train_data.augment_batch(
@@ -304,7 +304,7 @@ while num_steps < config.tot_steps:
             embd_seq_teacher2,
         )
         momentum_val = 1.0 + 0.5 * (config.momentum - 1.0) * (
-            1 + np.cos(np.pi * num_steps / config.tot_steps)
+            1 + np.cos(np.pi * num_steps / 2*config.tot_steps)
         )
         update_teacher_model(teacher_model, model, momentum_val)
         running_loss = running_loss[-999:] + [loss.detach().cpu().item()]
@@ -323,9 +323,9 @@ while num_steps < config.tot_steps:
                     "optimizer": optimizer.state_dict(),
                     "steps": num_steps,
                 },
-                f"{save_dir}/univit.pt",
+                f"{save_dir}/univit_more.pt",
             )
-        if num_steps >= config.tot_steps:
+        if num_steps >= 2*config.tot_steps:
             break
 
 pbar.close()

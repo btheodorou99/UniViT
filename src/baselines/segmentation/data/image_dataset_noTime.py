@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torchvision import transforms
 from torch.utils.data import Dataset
 
-SEGMENTATION_THRESHOLD = 0.1
+SEGMENTATION_THRESHOLD = 0.05
 
 class ImageDataset(Dataset):
     def __init__(self, dataset, config, device):

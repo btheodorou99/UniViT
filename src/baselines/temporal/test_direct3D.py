@@ -6,7 +6,7 @@ from tqdm import tqdm
 from sklearn import metrics
 from src.config import Config
 from torch.utils.data import DataLoader
-from src.models.direct import Embedding3D
+from src.models.direct import Embedding2D, Embedding3D
 from src.baselines.temporal.data.image_dataset_direct3D import ImageDataset
 
 SEED = 4
@@ -15,14 +15,17 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 5
+cuda_num = 0
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
 
 modalities = [
     # "Cardiac MRI (ACDC)",
-    "CT",
+    # "CT",
+    # "MRI",
+    "Amyloid PET",
+    "FDG PET",
 ]
 
 data_dir = "/shared/eng/bpt3/data/UniViT/data"
@@ -37,19 +40,26 @@ tune_data = {
     for task in tune_data
     if task in modalities
 }
+tune_data['All PET'] = tune_data['Amyloid PET'] + tune_data['FDG PET']
+tune_data.pop("Amyloid PET")
+tune_data.pop("FDG PET")
 test_data = pickle.load(open(f"{data_dir}/testingTemporalDataset.pkl", "rb"))
 test_data = {
     task: [p for p in test_data[task] if p[-1][4] is not None] for task in test_data
 }
+test_data['All PET'] = test_data['Amyloid PET'] + test_data['FDG PET']
+test_data.pop("Amyloid PET")
+test_data.pop("FDG PET")
 task_map = pickle.load(open(f"{data_dir}/taskMap.pkl", "rb"))
-valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t] if t in modalities]
-tune_data = {task: tune_data[task] for task in valid_tasks}
-test_data = {task: test_data[task] for task in valid_tasks}
+task_map['All PET'] = 'Multi-Class Classification'
+# valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t] if t in modalities]
+# tune_data = {task: tune_data[task] for task in valid_tasks}
+# test_data = {task: test_data[task] for task in valid_tasks}
 
 allResults = {}
 config.downstream_batch_size = 64
-config.downstream_epochs = 20
-for task in modalities:
+config.downstream_epochs = 100
+for task in tune_data:
     print(f"\n\nDownstream Evaluation on {task}")
     task_tune = tune_data[task]
     label = task_tune[0][0][4]
@@ -95,12 +105,15 @@ for task in modalities:
 
     model1 = Embedding3D(label_size).to(device)
     model2 = Embedding3D(label_size, temporal=True).to(device)
+    model3 = Embedding2D(label_size).to(device)
+    model4 = Embedding2D(label_size, temporal=True).to(device)
     optimizer1 = torch.optim.AdamW(model1.parameters(), lr=config.downstream_lr)
     optimizer2 = torch.optim.AdamW(model2.parameters(), lr=config.downstream_lr)
+    optimizer3 = torch.optim.AdamW(model3.parameters(), lr=config.downstream_lr)
+    optimizer4 = torch.optim.AdamW(model4.parameters(), lr=config.downstream_lr)
     for epoch in tqdm(
         range(config.downstream_epochs), leave=False, desc=f"{task} Tuning"
     ):
-        batches_since_step = 0
         for batch_image1, batch_image2, batch_labels in tqdm(
             task_tune_loader, desc=f"{task} Tuning Epoch {epoch+1}", leave=False
         ):
@@ -109,19 +122,33 @@ for task in modalities:
             batch_labels = batch_labels.to(device)
             predictions1 = model1(batch_image2)
             predictions2 = model2(torch.cat([batch_image1, batch_image2], dim=1))
+            predictions3 = model3(batch_image2[:, :, 8, :, :])
+            predictions4 = model4(torch.cat([batch_image1[:, :, 8, :, :], batch_image2[:, :, 8, :, :]], dim=1))
             predictions1 = train_activation(predictions1)
             predictions2 = train_activation(predictions2)
+            predictions3 = train_activation(predictions3)
+            predictions4 = train_activation(predictions4)
             loss1 = loss_fn(predictions1, batch_labels)
             loss2 = loss_fn(predictions2, batch_labels)
+            loss3 = loss_fn(predictions3, batch_labels)
+            loss4 = loss_fn(predictions4, batch_labels)
             loss1.backward()
             loss2.backward()
+            loss3.backward()
+            loss4.backward()
             optimizer1.step()
             optimizer2.step()
+            optimizer3.step()
+            optimizer4.step()
             optimizer1.zero_grad()
             optimizer2.zero_grad()
+            optimizer3.zero_grad()
+            optimizer4.zero_grad()
 
     task_preds1 = []
     task_preds2 = []
+    task_preds3 = []
+    task_preds4 = []
     task_labels = []
     for batch_image1, batch_image2, batch_labels in tqdm(
         task_test_loader, desc=f"{task} Testing", leave=False
@@ -132,19 +159,29 @@ for task in modalities:
         with torch.no_grad():
             predictions1 = model1(batch_image2)
             predictions2 = model2(torch.cat([batch_image1, batch_image2], dim=1))
+            predictions3 = model3(batch_image2[:, :, 8, :, :])
+            predictions4 = model4(torch.cat([batch_image1[:, :, 8, :, :], batch_image2[:, :, 8, :, :]], dim=1))
             predictions1 = test_activation(predictions1)
             predictions2 = test_activation(predictions2)
+            predictions3 = test_activation(predictions3)
+            predictions4 = test_activation(predictions4)
             task_preds1.extend(predictions1.cpu().tolist())
             task_preds2.extend(predictions2.cpu().tolist())
+            task_preds3.extend(predictions3.cpu().tolist())
+            task_preds4.extend(predictions4.cpu().tolist())
             task_labels.extend(batch_labels.cpu().tolist())
 
     if taskType == "Multi-Label Classification":
         task_preds1 = np.array(task_preds1)
         task_preds2 = np.array(task_preds2)
+        task_preds3 = np.array(task_preds3)
+        task_preds4 = np.array(task_preds4)
         task_labels = np.array(task_labels)
         task_rounded_preds1 = np.round(task_preds1)
         task_rounded_preds2 = np.round(task_preds2)
-        print("STATIC")
+        task_rounded_preds3 = np.round(task_preds3)
+        task_rounded_preds4 = np.round(task_preds4)
+        print("STATIC 3D")
         accPerLabel = [
             metrics.accuracy_score(
                 [label[i] for label in task_labels],
@@ -183,7 +220,7 @@ for task in modalities:
             "AUROC Per Label": aurocPerLabel,
         }
         print(taskResults)
-        print("TEMPORAL")
+        print("TEMPORAL 3D")
         accPerLabel = [
             metrics.accuracy_score(
                 [label[i] for label in task_labels],
@@ -222,21 +259,117 @@ for task in modalities:
             "AUROC Per Label": aurocPerLabel,
         }
         print(taskResults)
+        print("STATIC 2D")
+        accPerLabel = [
+            metrics.accuracy_score(
+                [label[i] for label in task_labels],
+                [pred[i] for pred in task_rounded_preds3],
+            )
+            for i in range(label_size)
+        ]
+        f1PerLabel = [
+            metrics.f1_score(
+                [label[i] for label in task_labels],
+                [pred[i] for pred in task_rounded_preds3],
+            )
+            for i in range(label_size)
+        ]
+        aurocPerLabel = [
+            metrics.roc_auc_score(
+                [label[i] for label in task_labels], [pred[i] for pred in task_preds3]
+            )
+            for i in range(label_size)
+        ]
+        overallAcc = metrics.accuracy_score(
+            task_labels.flatten(), task_rounded_preds3.flatten()
+        )
+        overallF1 = metrics.f1_score(
+            task_labels.flatten(), task_rounded_preds3.flatten()
+        )
+        overallAUROC = metrics.roc_auc_score(
+            task_labels.flatten(), task_preds3.flatten()
+        )
+        taskResults = {
+            "Accuracy": overallAcc,
+            "F1": overallF1,
+            "AUROC": overallAUROC,
+            "Accuracy Per Label": accPerLabel,
+            "F1 Per Label": f1PerLabel,
+            "AUROC Per Label": aurocPerLabel,
+        }
+        print(taskResults)
+        print("TEMPORAL 2D")
+        accPerLabel = [
+            metrics.accuracy_score(
+                [label[i] for label in task_labels],
+                [pred[i] for pred in task_rounded_preds4],
+            )
+            for i in range(label_size)
+        ]
+        f1PerLabel = [
+            metrics.f1_score(
+                [label[i] for label in task_labels],
+                [pred[i] for pred in task_rounded_preds4],
+            )
+            for i in range(label_size)
+        ]
+        aurocPerLabel = [
+            metrics.roc_auc_score(
+                [label[i] for label in task_labels], [pred[i] for pred in task_preds4]
+            )
+            for i in range(label_size)
+        ]
+        overallAcc = metrics.accuracy_score(
+            task_labels.flatten(), task_rounded_preds4.flatten()
+        )
+        overallF1 = metrics.f1_score(
+            task_labels.flatten(), task_rounded_preds4.flatten()
+        )
+        overallAUROC = metrics.roc_auc_score(
+            task_labels.flatten(), task_preds4.flatten()
+        )
+        taskResults = {
+            "Accuracy": overallAcc,
+            "F1": overallF1,
+            "AUROC": overallAUROC,
+            "Accuracy Per Label": accPerLabel,
+            "F1 Per Label": f1PerLabel,
+            "AUROC Per Label": aurocPerLabel,
+        }
+        print(taskResults)
     elif taskType == "Multi-Class Classification":
-        task_preds1 = np.array(task_preds1)
-        task_preds2 = np.array(task_preds2)
+        task_probs1 = np.array(task_preds1)
+        task_probs2 = np.array(task_preds2)
+        task_probs3 = np.array(task_preds3)
+        task_probs4 = np.array(task_preds4)
         task_labels = np.array(task_labels)
-        task_preds1 = np.argmax(task_preds1, axis=1)
-        task_preds2 = np.argmax(task_preds2, axis=1)
-        print("STATIC")
+        task_preds1 = np.argmax(task_probs1, axis=1)
+        task_preds2 = np.argmax(task_probs2, axis=1)
+        task_preds3 = np.argmax(task_probs3, axis=1)
+        task_preds4 = np.argmax(task_probs4, axis=1)
+        print("STATIC 3D")
         acc = metrics.accuracy_score(task_labels, task_preds1)
         f1 = metrics.f1_score(task_labels, task_preds1, average="macro")
-        taskResults = {"Accuracy": acc, "F1": f1}
+        auroc = metrics.roc_auc_score(task_labels, task_probs1, average="macro", multi_class="ovr")
+        taskResults = {"Accuracy": acc, "F1": f1, "AUROC": auroc}
         print(taskResults)
-        print("TEMPORAL")
+        print("TEMPORAL 3D")
         acc = metrics.accuracy_score(task_labels, task_preds2)
         f1 = metrics.f1_score(task_labels, task_preds2, average="macro")
-        taskResults = {"Accuracy": acc, "F1": f1}
+        auroc = metrics.roc_auc_score(task_labels, task_probs2, average="macro", multi_class="ovr")
+        taskResults = {"Accuracy": acc, "F1": f1, "AUROC": auroc}
+        print(taskResults)
+        print("STATIC 2D")
+        acc = metrics.accuracy_score(task_labels, task_preds3)
+        f1 = metrics.f1_score(task_labels, task_preds3, average="macro")
+        auroc = metrics.roc_auc_score(task_labels, task_probs3, average="macro", multi_class="ovr")
+        taskResults = {"Accuracy": acc, "F1": f1, "AUROC": auroc}
+        print(taskResults)
+        print("TEMPORAL 2D")
+        acc = metrics.accuracy_score(task_labels, task_preds4)
+        f1 = metrics.f1_score(task_labels, task_preds4, average="macro")
+        auroc = metrics.roc_auc_score(task_labels, task_probs4, average="macro", multi_class="ovr")
+        taskResults = {"Accuracy": acc, "F1": f1, "AUROC": auroc}
         print(taskResults)
 
     allResults[task] = taskResults

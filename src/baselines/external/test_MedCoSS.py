@@ -7,7 +7,8 @@ from sklearn import metrics
 from src.config import Config
 from torch.utils.data import DataLoader
 from src.data.image_dataset import ImageDataset
-from src.models.downstream import LinearClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.multioutput import MultiOutputClassifier
 from src.baselines.external.models.medcoss import MedCoSS
 
 model_key = "medcoss"
@@ -95,16 +96,11 @@ for task in tasks:
     )
 
     taskType = task_map[task]
+    downstream = LogisticRegression(max_iter=10000)
     if taskType == "Multi-Label Classification":
-        loss_fn = torch.nn.BCELoss()
-        train_activation = torch.nn.Sigmoid()
-        test_activation = torch.nn.Sigmoid()
-    elif taskType == "Multi-Class Classification":
-        loss_fn = torch.nn.CrossEntropyLoss()
-        train_activation = torch.nn.Identity()
-        test_activation = torch.nn.Softmax(dim=1)
-    else:
-        continue
+        downstream = MultiOutputClassifier(downstream)
+    X = []
+    y = []
 
     downstream = LinearClassifier(config.representation_size, label_size).to(device)
     optimizer = torch.optim.SGD(
@@ -185,12 +181,13 @@ for task in tasks:
         }
         print(taskResults)
     elif taskType == "Multi-Class Classification":
-        task_preds = np.array(task_preds)
+        task_probs = np.array(task_preds)
         task_labels = np.array(task_labels)
-        task_preds = np.argmax(task_preds, axis=1)
+        task_preds = np.argmax(task_probs, axis=1)
         acc = metrics.accuracy_score(task_labels, task_preds)
         f1 = metrics.f1_score(task_labels, task_preds, average="macro")
-        taskResults = {"Accuracy": acc, "F1": f1}
+        auroc = metrics.roc_auc_score(task_labels, task_probs, average="macro", multi_class="ovr")
+        taskResults = {"Accuracy": acc, "F1": f1, "AUROC": auroc}
         print(taskResults)
 
     # raise Exception

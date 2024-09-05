@@ -1,3 +1,4 @@
+import time
 import torch
 import random
 import numpy as np
@@ -126,14 +127,27 @@ class ImageDataset(Dataset):
             img[i] = self.augment(img[i])
 
         return img
+    
+    def load_image_with_retries(self, path, max_attempts=5, delay=1):
+        attempts = 0
+        errMessage = ""
+        while attempts < max_attempts:
+            try:
+                with open(path, 'rb') as f:
+                    image_tensor = (
+                        self.load_image(path)
+                        if self.image_depth is None
+                        else self.load_image_3D(path)
+                    )
+                return image_tensor  # Return the loaded image if successful
+            except IOError as e:
+                errMessage = str(e)
+                time.sleep(delay * (2 ** attempts))
+        raise Exception(f"Failed to load image after {max_attempts} attempts: {errMessage}")
 
     def __getitem__(self, idx):
         path, _, _, _, labels = self.dataset[idx]
-        image_tensor = (
-            self.load_image(path)
-            if self.image_depth is None
-            else self.load_image_3D(path)
-        )
+        image_tensor = self.load_image_with_retries(path)
         if self.init_augment:
             image_tensor = self.augment(image_tensor)
 

@@ -76,16 +76,11 @@ for task in tune_data:
     )
 
     taskType = task_map[task]
+    downstream = LogisticRegression(max_iter=10000)
     if taskType == "Multi-Label Classification":
-        loss_fn = torch.nn.BCELoss()
-        train_activation = torch.nn.Sigmoid()
-        test_activation = torch.nn.Sigmoid()
-    elif taskType == "Multi-Class Classification":
-        loss_fn = torch.nn.CrossEntropyLoss()
-        train_activation = torch.nn.Identity()
-        test_activation = torch.nn.Softmax(dim=1)
-    else:
-        continue
+        downstream = MultiOutputClassifier(downstream)
+    X = []
+    y = []
 
     model1 = Embedding2D(label_size).to(device)
     model2 = Embedding2D(label_size, temporal=True).to(device)
