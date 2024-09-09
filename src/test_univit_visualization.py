@@ -46,10 +46,12 @@ labels = [labelData(p) for p in visualization_data]
 model = UniViT(
     config.max_height,
     config.max_width,
-    config.max_time,
     config.max_depth,
+    config.max_time,
     config.num_channels,
     config.patch_size,
+    config.depth_patch_size,
+    config.time_patch_size,
     config.representation_size,
     config.num_layers,
     config.num_heads,

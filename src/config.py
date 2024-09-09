@@ -1,21 +1,16 @@
-# Original patch size 16
-# Adjust Max height/width
-# Increase Max depth if possible
-# Note original 400 epochs of 1.2 million images, ~500 million images with batch size 256 so 2 million steps
-
-
 class Config(object):
     def __init__(
         self,
         max_height=224,
         max_width=224,
+        max_depth=10,
         max_time=5,
-        max_depth=5,
         num_channels=3,
         patch_size=14,
+        depth_patch_size=5,
+        time_patch_size=5,
         representation_size=768,
         num_layers=12,
-        num_secondary_layers=4,
         num_heads=12,
         projection_size=8192,
         mlp_dim=1024,
@@ -28,25 +23,26 @@ class Config(object):
         teacher_patch_temp=0.07,
         momentum=0.999,
         center_momentum=0.9,
-        batch_size=8,
-        effective_batch_size=64,
+        batch_size=64,
         lr=1e-5,
-        lr_rampup=10000,
-        tot_steps=500000,
-        num_workers=8,
+        tot_epochs=25,
+        dataset_size=None,
+        tot_steps=100000,
+        num_workers=4,
         downstream_epochs=10,
-        downstream_batch_size=32,
+        downstream_batch_size=64,
         downstream_lr=1e-3,
     ):
         self.max_height = max_height
         self.max_width = max_width
-        self.max_time = max_time
         self.max_depth = max_depth
+        self.max_time = max_time
         self.num_channels = num_channels
         self.patch_size = patch_size
+        self.depth_patch_size = depth_patch_size
+        self.time_patch_size = time_patch_size
         self.representation_size = representation_size
         self.num_layers = num_layers
-        self.num_secondary_layers = num_secondary_layers
         self.num_heads = num_heads
         self.projection_size = projection_size
         self.mlp_dim = mlp_dim
@@ -60,11 +56,13 @@ class Config(object):
         self.momentum = momentum
         self.center_momentum = center_momentum
         self.batch_size = batch_size
-        self.effective_batch_size = effective_batch_size
         self.lr = lr
-        self.lr_rampup = lr_rampup
-        self.tot_steps = tot_steps
+        self.tot_epochs = tot_epochs
+        self.tot_steps = tot_epochs * dataset_size // batch_size if dataset_size else tot_steps
         self.num_workers = num_workers
         self.downstream_epochs = downstream_epochs
         self.downstream_batch_size = downstream_batch_size
         self.downstream_lr = downstream_lr
+
+    def dataset_to_steps(self, dataset_size):
+        self.tot_steps = self.tot_epochs * dataset_size // self.batch_size

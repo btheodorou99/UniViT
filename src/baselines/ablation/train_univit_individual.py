@@ -23,7 +23,6 @@ device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu"
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
 
-config.batch_size = config.effective_batch_size
 data_dir = "/shared/eng/bpt3/data/UniViT/data"
 save_dir = "/shared/eng/bpt3/data/UniViT/save"
 train_data_all = pickle.load(open(f"{data_dir}/trainingDataset.pkl", "rb"))

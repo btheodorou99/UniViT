@@ -6,7 +6,7 @@ import torch.nn.functional as F
 class Embedding3D(nn.Module):
     def __init__(self, out_dim, temporal=False):
         super(Embedding3D, self).__init__()
-        self.slice = 16
+        self.depth = 16
         self.image_dim = 128
 
         self.conv1 = nn.Conv3d(
@@ -15,7 +15,7 @@ class Embedding3D(nn.Module):
         self.conv2 = nn.Conv3d(16, 32, kernel_size=3, stride=1, padding=1)
         self.conv3 = nn.Conv3d(32, 64, kernel_size=3, stride=1, padding=1)
         self.flat_dim = (
-            64 * (self.slice // 8) * (self.image_dim // 8) * (self.image_dim // 8)
+            64 * (self.depth // 8) * (self.image_dim // 8) * (self.image_dim // 8)
         )
         self.fc1 = nn.Linear(self.flat_dim, 768)
         self.fc2 = nn.Linear(768, 768)

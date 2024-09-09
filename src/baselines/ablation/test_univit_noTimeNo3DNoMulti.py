@@ -40,6 +40,8 @@ model = UniViT(
     config.max_height,
     config.num_channels,
     config.patch_size,
+    config.depth_patch_size,
+    config.time_patch_size,
     config.representation_size,
     config.num_layers,
     config.num_heads,

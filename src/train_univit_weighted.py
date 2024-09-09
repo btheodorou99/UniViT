@@ -7,36 +7,39 @@ from tqdm import tqdm
 from copy import deepcopy
 from src.config import Config
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
-from src.models.univit_noMulti import UniViT
+from src.models.univit import UniViT
 from sklearn.neighbors import KNeighborsClassifier
-from src.data.image_dataset_noMulti import ImageDataset, KNNDataset
+from src.data.image_dataset import ImageDataset, KNNDataset
+from torch.utils.data import DataLoader, WeightedRandomSampler
 
-SEED = 4
-random.seed(SEED)
-np.random.seed(SEED)
-torch.manual_seed(SEED)
+# SEED = 4
+# random.seed(SEED)
+# np.random.seed(SEED)
+# torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 2
+cuda_num = 3
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
-if torch.cuda.is_available():
-    torch.cuda.manual_seed_all(SEED)
+# if torch.cuda.is_available():
+#     torch.cuda.manual_seed_all(SEED)
 
 data_dir = "/shared/eng/bpt3/data/UniViT/data"
 save_dir = "/shared/eng/bpt3/data/UniViT/save"
 train_data = pickle.load(open(f"{data_dir}/trainingDataset.pkl", "rb"))
-train_data = ImageDataset(train_data, config, "cpu")
+train_modalities = set([p[0][3] for p in train_data])
+train_data = ImageDataset(train_data, config, "cpu", augment=True)
 config.dataset_to_steps(len(train_data))
+train_sampler = WeightedRandomSampler(train_data.get_weights(), num_samples=len(train_data), replacement=True)
 train_loader = DataLoader(
     train_data,
+    sampler=train_sampler,
     batch_size=config.batch_size,
-    shuffle=True,
-    num_workers=config.num_workers,
+    num_workers=int(0.5*config.num_workers),
 )
 knn_data = {
     mod: random.choices(data, k=250)
     for (mod, data) in pickle.load(open(f"{data_dir}/tuningDataset.pkl", "rb")).items()
+    if mod in train_modalities
 }
 knn_train_data = [([p], mod) for mod in knn_data for p in knn_data[mod][:200]]
 knn_test_data = [([p], mod) for mod in knn_data for p in knn_data[mod][200:250]]
@@ -58,6 +61,7 @@ knn_test_loader = DataLoader(
 
 model = UniViT(
     config.max_height,
+    config.max_width,
     config.max_depth,
     config.max_time,
     config.num_channels,
@@ -78,9 +82,9 @@ model = UniViT(
 optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr)
 model = model.to(device)
 
-if os.path.exists(f"{save_dir}/univit_noMulti.pt"):
+if os.path.exists(f"{save_dir}/univit_weighted.pt"):
     print("Loading previous model")
-    checkpoint = torch.load(f"{save_dir}/univit_noMulti.pt", map_location="cpu")
+    checkpoint = torch.load(f"{save_dir}/univit_weighted.pt", map_location="cpu")
     model.load_state_dict(checkpoint["model"])
     optimizer.load_state_dict(checkpoint["optimizer"])
     num_steps = checkpoint["steps"]
@@ -120,33 +124,29 @@ def mim_loss_fn(student_emb, teacher_emb, center, mask):
 
 
 def frameSim_loss_fn(
-    time_seq1, depth_seq1, time_seq2, depth_seq2, time_mask, depth_mask
+    student_time_seq, student_depth_seq, teacher_time_seq, teacher_depth_seq, time_center, depth_center, time_mask, depth_mask,
 ):
-    time_seq1 = F.normalize(time_seq1, dim=-1)
-    depth_seq1 = F.normalize(depth_seq1, dim=-1)
-    time_seq2 = F.normalize(time_seq2, dim=-1)
-    depth_seq2 = F.normalize(depth_seq2, dim=-1)
-    time_dists1 = 1 - F.cosine_similarity(time_seq1[:, :-1], time_seq2[:, 1:], dim=-1)
-    time_dists2 = 1 - F.cosine_similarity(time_seq2[:, :-1], time_seq1[:, 1:], dim=-1)
-    time_dists = (time_dists1 + time_dists2) * (~time_mask[:, 1:])
-    time_loss = time_dists.sum() / (~time_mask[:, 1:]).sum()
+    student_time_seq = F.log_softmax(student_time_seq / config.student_temp, dim=-1)
+    teacher_time_seq = F.softmax((teacher_time_seq - time_center) / config.teacher_cls_temp, dim=-1)
+    student_depth_seq = F.log_softmax(student_depth_seq / config.student_temp, dim=-1)
+    teacher_depth_seq = F.softmax((teacher_depth_seq - depth_center) / config.teacher_cls_temp, dim=-1)
+    time_loss1 = torch.sum(-teacher_time_seq[:, :-1] * student_time_seq[:, 1:], dim=-1)
+    time_loss2 = torch.sum(-teacher_time_seq[:, 1:] * student_time_seq[:, :-1], dim=-1)
+    time_loss = torch.sum((time_loss1 + time_loss2) * time_mask[:, 1:], dim=-1) / (2 * time_mask[:, 1:].sum(dim=-1).clamp(min=1.0))
+    time_loss = time_loss.mean()
     if time_loss.isnan():
         time_loss = torch.tensor(0.0).to(device)
-    depth_dists1 = 1 - F.cosine_similarity(
-        depth_seq1[:, :-1], depth_seq2[:, 1:], dim=-1
-    )
-    depth_dists2 = 1 - F.cosine_similarity(
-        depth_seq2[:, :-1], depth_seq1[:, 1:], dim=-1
-    )
-    depth_dists = (depth_dists1 + depth_dists2) * (~depth_mask[:, 1:])
-    depth_loss = depth_dists.sum() / (~depth_mask[:, 1:]).sum()
+    depth_loss1 = torch.sum(-teacher_depth_seq[:, :-1] * student_depth_seq[:, 1:], dim=-1)
+    depth_loss2 = torch.sum(-teacher_depth_seq[:, 1:] * student_depth_seq[:, :-1], dim=-1)
+    depth_loss = torch.sum((depth_loss1 + depth_loss2) * depth_mask[:, 1:], dim=-1) / (2 * depth_mask[:, 1:].sum(dim=-1).clamp(min=1.0))
+    depth_loss = depth_loss.mean()
     if depth_loss.isnan():
         depth_loss = torch.tensor(0.0).to(device)
-    loss = time_loss + depth_loss
+    loss = (time_loss + depth_loss) / 2
     return loss
 
 
-def update_centers(center_cls, center_patch, cls1, cls2, embd_seq1, embd_seq2):
+def update_centers(center_cls, center_patch, center_time, center_depth, cls1, cls2, embd_seq1, embd_seq2, time_seq1, time_seq2, depth_seq1, depth_seq2):
     cls = torch.cat([cls1, cls2], dim=0).mean(dim=0)
     center_cls = (
         config.center_momentum * center_cls + (1 - config.center_momentum) * cls
@@ -155,7 +155,15 @@ def update_centers(center_cls, center_patch, cls1, cls2, embd_seq1, embd_seq2):
     center_patch = (
         config.center_momentum * center_patch + (1 - config.center_momentum) * patch
     )
-    return center_cls, center_patch
+    time = torch.cat([time_seq1, time_seq2], dim=0).mean(dim=0)
+    center_time = (
+        config.center_momentum * center_time + (1 - config.center_momentum) * time
+    )
+    depth = torch.cat([depth_seq1, depth_seq2], dim=0).mean(dim=0)
+    center_depth = (
+        config.center_momentum * center_depth + (1 - config.center_momentum) * depth
+    )
+    return center_cls, center_patch, center_time, center_depth
 
 
 def validate(model, train, test):
@@ -196,69 +204,41 @@ knn_plot = []
 knn_acc = 0
 center_cls = torch.zeros(1, config.projection_size).to(device)
 center_patch = torch.zeros(1, 1, config.projection_size).to(device)
+center_time = torch.zeros(1, 1, config.projection_size).to(device)
+center_depth = torch.zeros(1, 1, config.projection_size).to(device)
 while num_steps < config.tot_steps:
     running_loss = []
-    for batch_images, batch_dimensions in train_loader:
-        batch_images1, batch_dimensions1 = train_data.augment_batch(
-            batch_images, batch_dimensions
-        )
-        batch_images2, batch_dimensions2 = train_data.augment_batch(
-            batch_images, batch_dimensions
-        )
+    for (batch_images1, batch_dimensions1), (batch_images2, batch_dimensions2) in train_loader:
+        batch_images1 = batch_images1.to(device)
+        batch_dimensions1 = batch_dimensions1.to(device)
+        batch_images2 = batch_images2.to(device)
+        batch_dimensions2 = batch_dimensions2.to(device)
 
-        cls_model1, embd_seq_model1, mask1, orig_mask1, time_mask1, depth_mask1 = model(
-            batch_images1.to(device),
-            batch_dimensions1.to(device),
+        cls_model1, embd_seq_model1, time_seq_model1, depth_seq_model1, mask1, orig_mask1, time_mask1, depth_mask1 = model(
+            batch_images1,
+            batch_dimensions1,
             seqMask=True,
             train=True,
         )
-        cls_model2, embd_seq_model2, mask2, orig_mask2, time_mask2, depth_mask2 = model(
-            batch_images2.to(device),
-            batch_dimensions2.to(device),
+        cls_model2, embd_seq_model2, time_seq_model2, depth_seq_model2, mask2, orig_mask2, time_mask2, depth_mask2 = model(
+            batch_images2,
+            batch_dimensions2,
             seqMask=True,
             train=True,
         )
-        time_seq_model1 = embd_seq_model1[:, : config.max_time]
-        depth_seq_model1 = embd_seq_model1[
-            :, config.max_time : config.max_time + config.max_depth
-        ]
-        embd_seq_model1 = embd_seq_model1[:, config.max_time + config.max_depth :]
-        time_seq_model2 = embd_seq_model2[:, : config.max_time]
-        depth_seq_model2 = embd_seq_model2[
-            :, config.max_time : config.max_time + config.max_depth
-        ]
-        embd_seq_model2 = embd_seq_model2[:, config.max_time + config.max_depth :]
         with torch.no_grad():
-            cls_teacher1, embd_seq_teacher1, _, _, _, _ = teacher_model(
-                batch_images1.to(device),
-                batch_dimensions1.to(device),
+            cls_teacher1, embd_seq_teacher1, time_seq_teacher1, depth_seq_teacher1, _, _, _, _ = teacher_model(
+                batch_images1,
+                batch_dimensions1,
                 seqMask=False,
                 train=True,
             )
-            cls_teacher1 = cls_teacher1.to(device)
-            embd_seq_teacher1 = embd_seq_teacher1.to(device)
-            time_seq_teacher1 = embd_seq_teacher1[:, : config.max_time]
-            depth_seq_teacher1 = embd_seq_teacher1[
-                :, config.max_time : config.max_time + config.max_depth
-            ]
-            embd_seq_teacher1 = embd_seq_teacher1[
-                :, config.max_time + config.max_depth :
-            ]
-            cls_teacher2, embd_seq_teacher2, _, _, _, _ = teacher_model(
-                batch_images2.to(device),
-                batch_dimensions2.to(device),
+            cls_teacher2, embd_seq_teacher2, time_seq_teacher2, depth_seq_teacher2, _, _, _, _ = teacher_model(
+                batch_images2,
+                batch_dimensions2,
                 seqMask=False,
                 train=True,
             )
-            cls_teacher2 = cls_teacher2.to(device)
-            embd_seq_teacher2 = embd_seq_teacher2.to(device)
-            time_seq_teacher2 = embd_seq_teacher2[:, : config.max_time]
-            depth_seq_teacher2 = embd_seq_teacher2[
-                :, config.max_time : config.max_time + config.max_depth
-            ]
-            embd_seq_teacher2 = embd_seq_teacher2[
-                :, config.max_time + config.max_depth :
-            ]
 
         loss_cls = (
             cls_loss_fn(cls_model1, cls_teacher2, center_cls)
@@ -278,6 +258,8 @@ while num_steps < config.tot_steps:
                 depth_seq_model1,
                 time_seq_teacher1,
                 depth_seq_teacher1,
+                center_time,
+                center_depth,
                 time_mask1,
                 depth_mask1,
             )
@@ -286,6 +268,8 @@ while num_steps < config.tot_steps:
                 depth_seq_model2,
                 time_seq_teacher2,
                 depth_seq_teacher2,
+                center_time,
+                center_depth,
                 time_mask2,
                 depth_mask2,
             )
@@ -295,16 +279,22 @@ while num_steps < config.tot_steps:
         torch.nn.utils.clip_grad_norm_(model.parameters(), 3)
         optimizer.step()
         optimizer.zero_grad()
-        center_cls, center_patch = update_centers(
+        center_cls, center_patch, center_time, center_depth = update_centers(
             center_cls,
             center_patch,
+            center_time,
+            center_depth,
             cls_teacher1,
             cls_teacher2,
             embd_seq_teacher1,
             embd_seq_teacher2,
+            time_seq_teacher1,
+            time_seq_teacher2,
+            depth_seq_teacher1,
+            depth_seq_teacher2,
         )
         momentum_val = 1.0 + 0.5 * (config.momentum - 1.0) * (
-            1 + np.cos(np.pi * num_steps / config.tot_steps)
+            1 + np.cos(np.pi * num_steps / 2*config.tot_steps)
         )
         update_teacher_model(teacher_model, model, momentum_val)
         running_loss = running_loss[-999:] + [loss.detach().cpu().item()]
@@ -323,11 +313,20 @@ while num_steps < config.tot_steps:
                     "optimizer": optimizer.state_dict(),
                     "steps": num_steps,
                 },
-                f"{save_dir}/univit_noMulti.pt",
+                f"{save_dir}/univit_weighted.pt",
             )
         if num_steps >= config.tot_steps:
             break
 
+torch.save(
+    {
+        "model": model.state_dict(),
+        "optimizer": optimizer.state_dict(),
+        "steps": num_steps,
+    },
+    f"{save_dir}/univit_weighted.pt",
+)
+
 pbar.close()
-pickle.dump(loss_plot, open(f"{save_dir}/univit_noMulti_loss_plot.pkl", "wb"))
-pickle.dump(knn_plot, open(f"{save_dir}/univit_noMulti_knn_plot.pkl", "wb"))
+pickle.dump(loss_plot, open(f"{save_dir}/univit_weighted_loss_plot.pkl", "wb"))
+pickle.dump(knn_plot, open(f"{save_dir}/univit_weighted_knn_plot.pkl", "wb"))

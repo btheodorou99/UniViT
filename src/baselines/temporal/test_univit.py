@@ -26,8 +26,7 @@ if torch.cuda.is_available():
 
 data_dir = "/shared/eng/bpt3/data/UniViT/data"
 save_dir = "/shared/eng/bpt3/data/UniViT/save"
-# save_dir = "/srv/local/data/bpt3/UniViT/save"
-tune_data = pickle.load(open(f"{data_dir}/tuningTemporalDataset.pkl", "rb"))
+# tune_data = pickle.load(open(f"{data_dir}/tuningTemporalDataset.pkl", "rb"))
 tune_data = {
     task: [p for p in tune_data[task] if p[-1][4] is not None] for task in tune_data
 }
@@ -43,10 +42,12 @@ test_data = {task: test_data[task] for task in valid_tasks}
 model = UniViT(
     config.max_height,
     config.max_width,
-    config.max_time,
     config.max_depth,
+    config.max_time,
     config.num_channels,
     config.patch_size,
+    config.depth_patch_size,
+    config.time_patch_size,
     config.representation_size,
     config.num_layers,
     config.num_heads,

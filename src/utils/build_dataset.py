@@ -16,7 +16,8 @@ os.makedirs(data_dir, exist_ok=True)
 tokenizer = AutoTokenizer.from_pretrained("emilyalsentzer/Bio_ClinicalBERT")
 
 # Initialize the dataset
-dataset = {}
+pretraining_dataset = {}
+downstream_dataset = {}
 
 # Set the different directories
 mimic_cxr_dir = "/srv/local/data/MIMIC-CXR/"
@@ -112,12 +113,12 @@ for row in tqdm(df.itertuples(), total=len(df), desc="Processing MIMIC-CXR"):
     ]
     labels = [labelMap(l) for i, l in enumerate(labels) if i in chestXrayLabelIdx]
     dimensions = (1, 256, 256)
-    modality = "Chest X-Ray (MIMIC)"
+    modality = "MIMIC-CXR"
     data_point = (path, dimensions, note, modality, labels)
-    if subject_id not in dataset:
-        dataset[subject_id] = [data_point]
+    if subject_id not in pretraining_dataset:
+        pretraining_dataset[subject_id] = [data_point]
     else:
-        dataset[subject_id].append(data_point)
+        pretraining_dataset[subject_id].append(data_point)
 
 # Process the CheXpert dataset
 df = pd.read_csv(chexpert_dir + "chexpert-meta.csv")
@@ -194,12 +195,12 @@ for row in tqdm(df.itertuples(), total=len(df), desc="Processing CheXpert"):
     labels = [l for i, l in enumerate(labels) if i in chestXrayLabelIdx]
     dimensions = Image.open(path).size
     dimensions = (1, dimensions[1], dimensions[0])
-    modality = "Chest X-Ray (CheXpert)"
+    modality = "CheXpert"
     data_point = (path, dimensions, note, modality, labels)
-    if subject_id not in dataset:
-        dataset[subject_id] = [data_point]
+    if subject_id not in pretraining_dataset:
+        pretraining_dataset[subject_id] = [data_point]
     else:
-        dataset[subject_id].append(data_point)
+        pretraining_dataset[subject_id].append(data_point)
 
 # Process the skin lesion dataset
 df = pd.read_csv(isic_dir + "ISIC_2019_Training_GroundTruth.csv").merge(
@@ -234,12 +235,12 @@ for row in tqdm(df.itertuples(), total=len(df), desc="Processing ISIC"):
     labels = [getattr(row, c) for c in row._fields if c in condMap]
     dimensions = Image.open(path).size
     dimensions = (1, dimensions[1], dimensions[0])
-    modality = "Skin Lesion"
+    modality = "ISIC"
     data_point = (path, dimensions, note, modality, labels)
-    if subject_id not in dataset:
-        dataset[subject_id] = [data_point]
+    if subject_id not in downstream_dataset:
+        downstream_dataset[subject_id] = [data_point]
     else:
-        dataset[subject_id].append(data_point)
+        downstream_dataset[subject_id].append(data_point)
 
 # Load the ADNI Labels
 adni_labels = pd.read_csv(adni_dir + "DXSUM_PDXCONV.csv")
@@ -256,11 +257,11 @@ for subject_id in tqdm(data, desc="Processing ADNI MRI"):
         dimensions = (dimensions[2], dimensions[0], dimensions[1])
         note = [t - 100 for t in tokenizer.encode(f"T1-weighted MRI of a brain")]
         labels = adni_labels[subject_id] if subject_id in adni_labels else None
-        modality = "MRI"
-        if subject_id not in dataset:
-            dataset[subject_id] = [(path, dimensions, note, modality, labels)]
+        modality = "ADNI MRI"
+        if subject_id not in downstream_dataset:
+            downstream_dataset[subject_id] = [(path, dimensions, note, modality, labels)]
         else:
-            dataset[subject_id].append((path, dimensions, note, modality, labels))
+            downstream_dataset[subject_id].append((path, dimensions, note, modality, labels))
 
 # Process the ADNI Amyloid PET dataset
 data = pickle.load(open(adni_dir + "av45_pet_data.pkl", "rb"))
@@ -271,11 +272,11 @@ for subject_id in tqdm(data, desc="Processing ADNI AV45 PET"):
         dimensions = (dimensions[2], dimensions[0], dimensions[1])
         note = [t - 100 for t in tokenizer.encode(f"Amyloid PET scan of a brain")]
         labels = adni_labels[subject_id] if subject_id in adni_labels else None
-        modality = "Amyloid PET"
-        if subject_id not in dataset:
-            dataset[subject_id] = [(path, dimensions, note, modality, labels)]
+        modality = "ADNI PET"
+        if subject_id not in pretraining_dataset:
+            pretraining_dataset[subject_id] = [(path, dimensions, note, modality, labels)]
         else:
-            dataset[subject_id].append((path, dimensions, note, modality, labels))
+            pretraining_dataset[subject_id].append((path, dimensions, note, modality, labels))
 
 # Process the ADNI FDG PET dataset
 data = pickle.load(open(adni_dir + "fdg_pet_data.pkl", "rb"))
@@ -286,11 +287,11 @@ for subject_id in tqdm(data, desc="Processing ADNI FDG PET"):
         dimensions = (dimensions[2], dimensions[0], dimensions[1])
         note = [t - 100 for t in tokenizer.encode(f"FDG PET scan of a brain")]
         labels = adni_labels[subject_id] if subject_id in adni_labels else None
-        modality = "FDG PET"
-        if subject_id not in dataset:
-            dataset[subject_id] = [(path, dimensions, note, modality, labels)]
+        modality = "ADNI PET"
+        if subject_id not in pretraining_dataset:
+            pretraining_dataset[subject_id] = [(path, dimensions, note, modality, labels)]
         else:
-            dataset[subject_id].append((path, dimensions, note, modality, labels))
+            pretraining_dataset[subject_id].append((path, dimensions, note, modality, labels))
 
 # Process the DeepLesion dataset
 data = pd.read_csv(deep_lesion_dir + "DL_info.csv")
@@ -315,11 +316,11 @@ for row in tqdm(data.itertuples(), total=len(data), desc="Processing DeepLesion"
     labels = labelMap[row.File_name]
     labels = [1 if i in labels else 0 for i in range(8)] if labels else None
     subject_id = f"DL_{row.Patient_index}"
-    modality = "CT"
-    if subject_id not in dataset:
-        dataset[subject_id] = [(path, dimensions, note, modality, labels)]
+    modality = "DeepLesion"
+    if subject_id not in pretraining_dataset:
+        pretraining_dataset[subject_id] = [(path, dimensions, note, modality, labels)]
     else:
-        dataset[subject_id].append((path, dimensions, note, modality, labels))
+        pretraining_dataset[subject_id].append((path, dimensions, note, modality, labels))
 
 # Process the COVID-QU-Ex dataset
 for top_dir in tqdm(os.listdir(covid_cxr_dir), desc="Processing COVID-QU-Ex"):
@@ -342,13 +343,13 @@ for top_dir in tqdm(os.listdir(covid_cxr_dir), desc="Processing COVID-QU-Ex"):
                     subject_id = (
                         path.split("/")[-1].split("_")[0] if "sub-" in path else path
                     )
-                    modality = "Chest X-Ray (COVID-QU-Ex)"
-                    if subject_id not in dataset:
-                        dataset[subject_id] = [
+                    modality = "COVID-QU-Ex"
+                    if subject_id not in downstream_dataset:
+                        downstream_dataset[subject_id] = [
                             (path, dimensions, note, modality, labels)
                         ]
                     else:
-                        dataset[subject_id].append(
+                        downstream_dataset[subject_id].append(
                             (path, dimensions, note, modality, labels)
                         )
 
@@ -386,11 +387,11 @@ for cls in tqdm(os.listdir(crc_he_dir1), desc="Processing CRC-HE (Part 1)"):
         ]
         labels = labelIdx[cls]
         subject_id = path.split("/")[-1].split("-")[-1].split(".")[0]
-        modality = "Histopathology"
-        if subject_id not in dataset:
-            dataset[subject_id] = [(path, dimensions, note, modality, labels)]
+        modality = "CRC-HE"
+        if subject_id not in pretraining_dataset:
+            pretraining_dataset[subject_id] = [(path, dimensions, note, modality, labels)]
         else:
-            dataset[subject_id].append((path, dimensions, note, modality, labels))
+            pretraining_dataset[subject_id].append((path, dimensions, note, modality, labels))
 
 for cls in tqdm(os.listdir(crc_he_dir2), desc="Processing CRC-HE (Part 2)"):
     for img in os.listdir(f"{crc_he_dir2}{cls}/"):
@@ -403,11 +404,11 @@ for cls in tqdm(os.listdir(crc_he_dir2), desc="Processing CRC-HE (Part 2)"):
         ]
         labels = labelIdx[cls]
         subject_id = path.split("/")[-1].split("-")[-1].split(".")[0]
-        modality = "Histopathology"
-        if subject_id not in dataset:
-            dataset[subject_id] = [(path, dimensions, note, modality, labels)]
+        modality = "CRC-HE"
+        if subject_id not in pretraining_dataset:
+            pretraining_dataset[subject_id] = [(path, dimensions, note, modality, labels)]
         else:
-            dataset[subject_id].append((path, dimensions, note, modality, labels))
+            pretraining_dataset[subject_id].append((path, dimensions, note, modality, labels))
 
 # Process the BraTS dataset
 subdir = "BraTS-Path"
@@ -444,10 +445,10 @@ for cls in tqdm(
         labels = None if cls == "Validation" else labelIdx[cls]
         subject_id = img.split(".")[0]
         modality = "BraTS-Path"
-        if subject_id not in dataset:
-            dataset[subject_id] = [(path, dimensions, note, modality, labels)]
+        if subject_id not in pretraining_dataset:
+            pretraining_dataset[subject_id] = [(path, dimensions, note, modality, labels)]
         else:
-            dataset[subject_id].append((path, dimensions, note, modality, labels))
+            pretraining_dataset[subject_id].append((path, dimensions, note, modality, labels))
 
 subdir = "BraTS-MEN-RT"
 for split in tqdm(["Train", "Val"], desc="Processing BraTS-MEN-RT"):
@@ -458,11 +459,11 @@ for split in tqdm(["Train", "Val"], desc="Processing BraTS-MEN-RT"):
         note = [t - 100 for t in tokenizer.encode(f"T1 MRI image of a patient")]
         labels = None if split == "Validation" else path.replace("t1c", "gtv")
         subject_id = "-".join(subj_dir.split("-")[:-1])
-        modality = "MRI (BraTS-MEN-RT)"
-        if subject_id not in dataset:
-            dataset[subject_id] = [(path, dimensions, note, modality, labels)]
+        modality = "BraTS-MEN-RT"
+        if subject_id not in pretraining_dataset:
+            pretraining_dataset[subject_id] = [(path, dimensions, note, modality, labels)]
         else:
-            dataset[subject_id].append((path, dimensions, note, modality, labels))
+            pretraining_dataset[subject_id].append((path, dimensions, note, modality, labels))
 
 for subdir in ["BraTS-GLI", "BraTS-GoAT", "BraTS-MET", "BraTS-PED"]:
     for split in tqdm(["Train", "Val"], desc=f"Processing {subdir}"):
@@ -485,17 +486,17 @@ for subdir in ["BraTS-GLI", "BraTS-GoAT", "BraTS-MET", "BraTS-PED"]:
                         f"{imgType.upper()} MRI image of a patient"
                     )
                 ]
-                labels = None if split == "Validation" else path.replace(imgType, "seg")
+                labels = None if split == "Validation" or imgType != "t1c" else path.replace(imgType, "seg")
                 subject_id = (
                     "-".join(subj_dir.split("-")[:-1])
                     if subdir != "BraTS-GoAT"
                     else subj_dir
                 ) + f"-{imgType}"
-                modality = f"{imgType.upper()} MRI ({subdir})"
-                if subject_id not in dataset:
-                    dataset[subject_id] = [(path, dimensions, note, modality, labels)]
+                modality = subdir
+                if subject_id not in pretraining_dataset:
+                    pretraining_dataset[subject_id] = [(path, dimensions, note, modality, labels)]
                 else:
-                    dataset[subject_id].append(
+                    pretraining_dataset[subject_id].append(
                         (path, dimensions, note, modality, labels)
                     )
 
@@ -522,91 +523,93 @@ for cls in tqdm(os.listdir(acdc_dir), desc="Processing ACDC"):
             ]
             labels = labelIdx[cls]
             subject_id = f"ACDC-{subj}"
-            modality = "Cardiac MRI (ACDC)"
-            if subject_id not in dataset:
-                dataset[subject_id] = [(path, dimensions, note, modality, labels)]
+            modality = "ACDC"
+            if subject_id not in downstream_dataset:
+                downstream_dataset[subject_id] = [(path, dimensions, note, modality, labels)]
             else:
-                dataset[subject_id].append((path, dimensions, note, modality, labels))
+                downstream_dataset[subject_id].append((path, dimensions, note, modality, labels))
 
-dataset = list(dataset.values())
-modalities = list(set([p[0][3] for p in dataset]))
+pretraining_dataset = list(pretraining_dataset.values())
+modalities = list(set([p[0][3] for p in pretraining_dataset]))
 for m in modalities:
     print(m)
-    d = [p for p in dataset if p[0][3] == m]
+    d = [p for p in pretraining_dataset if p[0][3] == m]
+    print(len(d))
+    print(len([v for p in d for v in p]))
+    print(max([len(p) for p in d]))
+    print(Counter([v[1] for p in d for v in p]).most_common(5))
+    print()
+    
+downstream_dataset = list(downstream_dataset.values())
+downstream_modalities = list(set([p[0][3] for p in downstream_dataset]))
+for m in downstream_modalities:
+    print(m)
+    d = [p for p in downstream_dataset if p[0][3] == m]
     print(len(d))
     print(len([v for p in d for v in p]))
     print(max([len(p) for p in d]))
     print(Counter([v[1] for p in d for v in p]).most_common(5))
     print()
 
-pickle.dump(dataset, open(data_dir + "intermediate_dataset.pkl", "wb"))
+pickle.dump(pretraining_dataset, open(data_dir + "intermediate_pretraining_dataset.pkl", "wb"))
+pickle.dump(downstream_dataset, open(data_dir + "intermediate_downstream_dataset.pkl", "wb"))
 
 # Split the dataset
-# if modality is less than 5000, then split 0.4 test, otherwise 0.2 test
 splits = []
 for m in modalities:
-    d = [p for p in dataset if p[0][3] == m]
-    unlabeled = [p for p in d if p[0][4] is None]
-    labeled = [p for p in d if p[0][4] is not None]
+    d = [p for p in pretraining_dataset if p[0][3] == m]
+    unlabeled = [p for p in d if p[-1][4] is None]
+    labeled = [p for p in d if p[-1][4] is not None]
     d_train, d_test = train_test_split(
-        labeled, test_size=0.2 if len(labeled) >= 5000 else 0.4, random_state=4
+        labeled, test_size=0.4, random_state=4
     )
     d_train = d_train + unlabeled
     splits.append((d_train, d_test))
 train = [p for d in splits for p in d[0]]
 test = [p for d in splits for p in d[1]]
+test = test + downstream_dataset
 tune, test = train_test_split(test, test_size=0.5, random_state=4)
 visualization = tune + test
-tune_temporal = [p for p in tune if len(p) >= 3]
-test_temporal = [p for p in test if len(p) >= 3]
+tune_temporal = [p for p in tune if len(p) >= 2]
+test_temporal = [p for p in test if len(p) >= 2]
 tune = [v for p in tune for v in p]
 test = [v for p in test for v in p]
 
 # Separate the tuning and testing datasets by modality
+modalities = list(set([v[3] for v in tune]))
 tune = {m: [d for d in tune if d[3] == m] for m in modalities}
 test = {m: [d for d in test if d[3] == m] for m in modalities}
 tune_temporal = {m: [p for p in tune_temporal if p[0][3] == m] for m in modalities}
 test_temporal = {m: [p for p in test_temporal if p[0][3] == m] for m in modalities}
 taskMap = {
-    "Chest X-Ray (MIMIC)": "Multi-Label Classification",
-    "Chest X-Ray (CheXpert)": "Multi-Label Classification",
-    "Skin Lesion": "Multi-Label Classification",
-    "MRI": "Multi-Class Classification",
-    "Amyloid PET": "Multi-Class Classification",
-    "FDG PET": "Multi-Class Classification",
-    "CT": "Multi-Label Classification",
-    "Chest X-Ray (COVID-QU-Ex)": "Multi-Class Classification",
-    "Histopathology": "Multi-Class Classification",
+    "MIMIC-CXR": "Multi-Label Classification",
+    "CheXpert": "Multi-Label Classification",
+    "ISIC": "Multi-Label Classification",
+    "ADNI MRI": "Multi-Class Classification",
+    "ADNI PET": "Multi-Class Classification",
+    "DeepLesion": "Multi-Label Classification",
+    "COVID-QU-Ex": "Multi-Class Classification",
+    "CRC-HE": "Multi-Class Classification",
     "BraTS-Path": "Multi-Class Classification",
-    "Cardiac MRI (ACDC)": "Multi-Class Classification",
-    "T1C MRI (BraTS-GoAT)": "Segmentation",
-    "T1C MRI (BraTS-GLI)": "Segmentation",
-    "T1C MRI (BraTS-MET)": "Segmentation",
-    "T1C MRI (BraTS-PED)": "Segmentation",
-    "T1N MRI (BraTS-GoAT)": "Segmentation",
-    "T1N MRI (BraTS-GLI)": "Segmentation",
-    "T1N MRI (BraTS-MET)": "Segmentation",
-    "T1N MRI (BraTS-PED)": "Segmentation",
-    "T2W MRI (BraTS-GoAT)": "Segmentation",
-    "T2W MRI (BraTS-GLI)": "Segmentation",
-    "T2W MRI (BraTS-MET)": "Segmentation",
-    "T2W MRI (BraTS-PED)": "Segmentation",
-    "T2F MRI (BraTS-GoAT)": "Segmentation",
-    "T2F MRI (BraTS-GLI)": "Segmentation",
-    "T2F MRI (BraTS-MET)": "Segmentation",
-    "T2F MRI (BraTS-PED)": "Segmentation",
-    "MRI (BraTS-MEN-RT)": "Segmentation",
+    "ACDC": "Multi-Class Classification",
+    "BraTS-GoAT": "Segmentation",
+    "BraTS-GLI": "Segmentation",
+    "BraTS-MET": "Segmentation",
+    "BraTS-PED": "Segmentation",
+    "BraTS-MEN-RT": "Segmentation",
 }
 flatTasks = set(
     [
-        "Chest X-Ray (MIMIC)",
-        "Chest X-Ray (CheXpert)",
-        "Skin Lesion",
-        "Chest X-Ray (COVID-QU-Ex)",
-        "Histopathology",
+        "MIMIC-CXR",
+        "CheXpert",
+        "ISIC",
+        "COVID-QU-Ex",
+        "CRC-HE",
         "BraTS-Path",
     ]
 )
+
+print(len(train))
 
 pickle.dump(train, open(data_dir + "trainingDataset.pkl", "wb"))
 pickle.dump(tune, open(data_dir + "tuningDataset.pkl", "wb"))
@@ -617,41 +620,19 @@ pickle.dump(visualization, open(data_dir + "visualizationDataset.pkl", "wb"))
 pickle.dump(taskMap, open(data_dir + "taskMap.pkl", "wb"))
 pickle.dump(flatTasks, open(data_dir + "flatTasks.pkl", "wb"))
 
-# Chest X-Ray (MIMIC)
+### PRE-TRAINING (281792 TOTAL PATIENTS)
+
+# MIMIC-CXR
 # 65379
 # 377095
 # 174
 # [((1, 256, 256), 377095)]
 
-# Chest X-Ray (CheXpert)
+# CheXpert
 # 64540
 # 223414
 # 92
 # [((1, 320, 390), 134659), ((1, 320, 389), 21876), ((1, 320, 320), 21792), ((1, 390, 320), 5835), ((1, 369, 320), 4934)]
-
-# Chest X-Ray (COVID-QU-Ex)
-# 34854
-# 39746
-# 35
-# [((1, 256, 256), 39746)]
-
-# Skin Lesion
-# 25331
-# 25331
-# 1
-# [((1, 1024, 1024), 12414), ((1, 450, 600), 10015), ((1, 680, 1024), 1121), ((1, 768, 1024), 774), ((1, 682, 1024), 173)]
-
-# Histopathology
-# 107180
-# 107180
-# 1
-# [((1, 224, 224), 107180)]
-
-# CT
-# 4427
-# 14601
-# 37
-# [((61, 512, 512), 3397), ((13, 512, 512), 2628), ((122, 512, 512), 624), ((26, 512, 512), 608), ((31, 512, 512), 328)]
 
 # BraTS-Path
 # 160301
@@ -659,128 +640,78 @@ pickle.dump(flatTasks, open(data_dir + "flatTasks.pkl", "wb"))
 # 1
 # [((1, 512, 512), 160301)]
 
-# MRI
-# 2507
-# 15948
-# 29
-# [((1, 192, 192), 3140), ((5, 256, 256), 1452), ((47, 128, 128), 1434), ((63, 128, 128), 1337), ((3, 256, 256), 1266)]
+# CRC-HE
+# 107180
+# 107180
+# 1
+# [((1, 224, 224), 107180)]
 
-# FDG PET
-# 35
-# 121
-# 6
-# [((47, 128, 128), 43), ((128, 128, 128), 21), ((81, 168, 168), 21), ((63, 128, 128), 11), ((90, 128, 128), 9)]
+# DeepLesion
+# 4427
+# 14601
+# 37
+# [((61, 512, 512), 3397), ((13, 512, 512), 2628), ((122, 512, 512), 624), ((26, 512, 512), 608), ((31, 512, 512), 328)]
 
-# Amyloid PET
-# 53
-# 166
-# 9
-# [((90, 128, 128), 49), ((81, 336, 336), 37), ((81, 256, 256), 23), ((47, 128, 128), 20), ((81, 168, 168), 18)]
+# ADNI PET
+# 1725
+# 6343
+# 16
+# [((47, 128, 128), 1497), ((63, 128, 128), 1351), ((90, 128, 128), 742), ((35, 128, 128), 592), ((109, 336, 336), 546)]
 
-# Cardiac MRI (ACDC)
-# 150
-# 3972
-# 35
-# [((9, 216, 256), 389), ((10, 216, 256), 328), ((8, 216, 256), 308), ((10, 256, 216), 253), ((9, 256, 216), 191)]
+# BraTS-GLI
+# 2800
+# 6152
+# 10
+# [((182, 182, 218), 6152)]
 
-# MRI (BraTS-MEN-RT)
+# BraTS-MEN-RT
 # 570
 # 570
 # 1
 # [((124, 256, 256), 105), ((136, 512, 512), 46), ((172, 256, 256), 39), ((176, 256, 256), 22), ((120, 512, 512), 14)]
 
-# T1C MRI (BraTS-GoAT)
-# 1802
-# 1802
+# BraTS-GoAT
+# 7208
+# 7208
 # 1
-# [((155, 240, 240), 1802)]
+# [((155, 240, 240), 7208)]
 
-# T1N MRI (BraTS-GoAT)
-# 1802
-# 1802
+# BraTS-PED
+# 1404
+# 1404
 # 1
-# [((155, 240, 240), 1802)]
+# [((155, 240, 240), 1404)]
 
-# T2W MRI (BraTS-GoAT)
-# 1802
-# 1802
-# 1
-# [((155, 240, 240), 1802)]
-
-# T2F MRI (BraTS-GoAT)
-# 1802
-# 1802
-# 1
-# [((155, 240, 240), 1802)]
-
-# T1C MRI (BraTS-PED)
-# 351
-# 351
-# 1
-# [((155, 240, 240), 351)]
-
-# T1N MRI (BraTS-PED)
-# 351
-# 351
-# 1
-# [((155, 240, 240), 351)]
-
-# T2W MRI (BraTS-PED)
-# 351
-# 351
-# 1
-# [((155, 240, 240), 351)]
-
-# T2F MRI (BraTS-PED)
-# 351
-# 351
-# 1
-# [((155, 240, 240), 351)]
-
-# T1C MRI (BraTS-MET)
-# 639
-# 740
+# BraTS-MET
+# 2556
+# 2960
 # 7
-# [((155, 240, 240), 416), ((126, 256, 256), 46), ((104, 320, 320), 37), ((90, 400, 400), 33), ((106, 256, 256), 30)]
+# [((155, 240, 240), 1664), ((126, 256, 256), 184), ((104, 320, 320), 148), ((90, 400, 400), 132), ((106, 256, 256), 120)]
 
-# T1N MRI (BraTS-MET)
-# 639
-# 740
-# 7
-# [((155, 240, 240), 416), ((126, 256, 256), 46), ((104, 320, 320), 37), ((90, 400, 400), 33), ((106, 256, 256), 30)]
 
-# T2W MRI (BraTS-MET)
-# 639
-# 740
-# 7
-# [((155, 240, 240), 416), ((126, 256, 256), 46), ((104, 320, 320), 37), ((90, 400, 400), 33), ((106, 256, 256), 30)]
 
-# T2F MRI (BraTS-MET)
-# 639
-# 740
-# 7
-# [((155, 240, 240), 416), ((126, 256, 256), 46), ((104, 320, 320), 37), ((90, 400, 400), 33), ((106, 256, 256), 30)]
+### DOWNSTREAM
 
-# T1C MRI (BraTS-GLI)
-# 700
-# 1538
-# 10
-# [((182, 182, 218), 1538)]
+# COVID-QU-Ex
+# 34854
+# 39746
+# 35
+# [((1, 256, 256), 39746)]
 
-# T2W MRI (BraTS-GLI)
-# 700
-# 1538
-# 10
-# [((182, 182, 218), 1538)]
+# ISIC
+# 25331
+# 25331
+# 1
+# [((1, 1024, 1024), 12414), ((1, 450, 600), 10015), ((1, 680, 1024), 1121), ((1, 768, 1024), 774), ((1, 682, 1024), 173)]
 
-# T2F MRI (BraTS-GLI)
-# 700
-# 1538
-# 10
-# [((182, 182, 218), 1538)]
+# ADNI MRI
+# 2507
+# 9892
+# 15
+# [((1, 192, 192), 3140), ((5, 256, 256), 1452), ((3, 256, 256), 1266), ((1, 512, 512), 861), ((1, 256, 256), 607)]
 
-# T1N MRI (BraTS-GLI)
-# 700
-# 1538
-# 10
-# [((182, 182, 218), 1538)]
+# ACDC
+# 150
+# 3972
+# 35
+# [((9, 216, 256), 389), ((10, 216, 256), 328), ((8, 216, 256), 308), ((10, 256, 216), 253), ((9, 256, 216), 191)]

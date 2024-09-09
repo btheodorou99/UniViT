@@ -23,11 +23,11 @@ device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu"
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
 
-config.batch_size = config.effective_batch_size
 data_dir = "/shared/eng/bpt3/data/UniViT/data"
 save_dir = "/shared/eng/bpt3/data/UniViT/save"
 train_data = pickle.load(open(f"{data_dir}/trainingDataset.pkl", "rb"))
 train_data = ImageDataset(train_data, config, "cpu")
+config.dataset_to_steps(len(train_data))
 train_loader = DataLoader(
     train_data,
     batch_size=config.batch_size,
@@ -62,6 +62,8 @@ model = UniViT(
     config.max_time,
     config.num_channels,
     config.patch_size,
+    config.depth_patch_size,
+    config.time_patch_size,
     config.representation_size,
     config.num_layers,
     config.num_heads,

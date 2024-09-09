@@ -33,10 +33,8 @@ DATA_PER_CENTER = 5
 DECODER_DIM = 512
 NUM_DECODER_LAYERS = 8
 
-config.batch_size = config.effective_batch_size
 data_dir = "/shared/eng/bpt3/data/UniViT/data"
 save_dir = "/shared/eng/bpt3/data/UniViT/save"
-save_dir = "/srv/local/data/bpt3/UniViT/save"
 train_data_all = pickle.load(open(f"{data_dir}/trainingDataset.pkl", "rb"))
 knn_data = {
     mod: random.choices(data, k=250)
@@ -75,10 +73,12 @@ config.tot_steps = config.tot_steps // len(modalities)
 model = MedCoSS(
     config.max_height,
     config.max_width,
-    config.max_time,
     config.max_depth,
+    config.max_time,
     config.num_channels,
     config.patch_size,
+    config.depth_patch_size,
+    config.time_patch_size,
     config.representation_size,
     config.num_layers,
     config.num_heads,
