@@ -7,11 +7,11 @@ from sklearn import metrics
 from src.config import Config
 from torch.utils.data import DataLoader
 from src.models.univit_noTimeNo3D import UniViT
-from src.baselines.temporal.data.image_dataset_noTimeNo3D import ImageDataset
 from sklearn.linear_model import LogisticRegression
 from sklearn.multioutput import MultiOutputClassifier
+from src.baselines.temporal.data.image_dataset_noTimeNo3D import ImageDataset
 
-model_key = "temporal__univit_noTimeNo3D"
+model_key = "univit_noTimeNo3D"
 
 SEED = 4
 random.seed(SEED)
@@ -54,30 +54,36 @@ model = UniViT(
     config.dropout,
     config.attention_dropout,
     config.mask_prob,
+    config.patch_prob,
 ).to(device)
 print("Loading previous model")
 model.load_state_dict(
-    torch.load(f"{save_dir}/{model_key}.pt", map_location="cpu")["model"], strict=False
+    torch.load(f"{save_dir}/{model_key}.pt", map_location="cpu")["model"]
 )
 model.eval()
 model.requires_grad_(False)
 
 allResults = {}
 for task in tune_data:
-    print(f"\n\nDownstream Evaluation on {task}")
+    if task not in task_map or task_map[task] not in ["Multi-Class Classification", "Multi-Label Classification"]:
+        continue
+    
     task_tune = tune_data[task]
     label = task_tune[0][0][4]
     if isinstance(label, list):
         label_size = len(label)
         multiclass = False
     elif isinstance(label, int):
-        label_size = len(set([p[0][4] for p in task_tune]))
+        labels = tuple(sorted(set([p[0][4] for p in task_tune])))
+        label_size = len(labels)
         multiclass = True
+        if label_size == 1 or max(labels) != label_size - 1 or tuple(sorted(set([p[0][4] for p in test_data[task]]))) != labels:
+            continue
     else:
         continue
-    task_tune_data = ImageDataset(
-        task_tune, config, "cpu", augment=False, downstream=True, multiclass=multiclass
-    )
+
+    print(f'\n\nDownstream Evaluation on {task}')
+    task_tune_data = ImageDataset(task_tune, config, "cpu", multiclass=multiclass)
     task_tune_loader = DataLoader(
         task_tune_data,
         batch_size=config.downstream_batch_size,
@@ -85,9 +91,7 @@ for task in tune_data:
         num_workers=config.num_workers,
     )
     task_test = test_data[task]
-    task_test_data = ImageDataset(
-        task_test, config, "cpu", augment=False, downstream=True, multiclass=multiclass
-    )
+    task_test_data = ImageDataset(task_test, config, "cpu", multiclass=multiclass)
     task_test_loader = DataLoader(
         task_test_data,
         batch_size=config.downstream_batch_size,
@@ -102,27 +106,14 @@ for task in tune_data:
     X = []
     y = []
 
-    downstream = LinearClassifier(config.representation_size, label_size).to(device)
-    optimizer = torch.optim.SGD(
-        downstream.parameters(), lr=config.downstream_lr, momentum=0.9, weight_decay=0
-    )
-    for epoch in tqdm(
-        range(config.downstream_epochs), leave=False, desc=f"{task} Tuning"
-    ):
-        batches_since_step = 0
-        for batch_images, batch_dimensions, batch_labels in tqdm(
-            task_tune_loader, desc=f"{task} Tuning Epoch {epoch+1}", leave=False
-        ):
-            batch_images = batch_images.to(device)
-            batch_labels = batch_labels.to(device)
-            with torch.no_grad():
-                representations = model.embed(batch_images, batch_dimensions)
-            predictions = downstream(representations)
-            predictions = train_activation(predictions)
-            loss = loss_fn(predictions, batch_labels)
-            loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
+    for batch_images, batch_dimensions, batch_labels in tqdm(task_tune_loader, desc=f"{task} Tuning", leave=False):
+        batch_images = batch_images.to(device)
+        with torch.no_grad():
+            representations = model.embed(batch_images, batch_dimensions)
+            X.extend(representations.cpu().tolist())
+            y.extend(batch_labels.cpu().tolist())
+
+    downstream.fit(X, y)
 
     task_preds = []
     task_labels = []
@@ -130,12 +121,12 @@ for task in tune_data:
         task_test_loader, desc=f"{task} Testing", leave=False
     ):
         batch_images = batch_images.to(device)
-        batch_labels = batch_labels.to(device)
         with torch.no_grad():
             representations = model.embed(batch_images, batch_dimensions)
-            predictions = downstream(representations)
-            predictions = test_activation(predictions)
-            task_preds.extend(predictions.cpu().tolist())
+            predictions = downstream.predict_proba(representations.cpu().numpy())
+            if taskType == "Multi-Label Classification":
+                predictions = np.array(predictions).transpose(1, 0, 2)[:,:,1]
+            task_preds.extend(predictions.tolist())
             task_labels.extend(batch_labels.cpu().tolist())
 
     if taskType == "Multi-Label Classification":
@@ -191,4 +182,4 @@ for task in tune_data:
         print(taskResults)
 
     allResults[task] = taskResults
-pickle.dump(allResults, open(f"{save_dir}/{model_key}_downstreamResults.pkl", "wb"))
+pickle.dump(allResults, open(f"{save_dir}/{model_key}_temporal_downstreamResults.pkl", "wb"))

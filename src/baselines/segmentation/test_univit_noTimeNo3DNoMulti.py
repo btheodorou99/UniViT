@@ -95,7 +95,7 @@ for task in valid_tasks:
     downstream = SegmentationModel(config.representation_size, config.patch_size).to(device)
     optimizer = torch.optim.Adam(downstream.parameters(), lr=config.downstream_lr)
     for epoch in tqdm(
-        range(10*config.downstream_epochs), leave=False, desc=f"{task} Tuning"
+        range(config.downstream_epochs), leave=False, desc=f"{task} Tuning"
     ):
         for batch_images, batch_dimensions, batch_labels in tqdm(
             task_tune_loader, desc=f"{task} Tuning Epoch {epoch+1}", leave=False

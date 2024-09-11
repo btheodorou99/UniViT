@@ -1,4 +1,3 @@
-# https://github.com/bytedance/ibot/tree/main
 import torch
 import random
 import pickle
@@ -9,11 +8,10 @@ from src.config import Config
 from torch.utils.data import DataLoader
 from sklearn.linear_model import LogisticRegression
 from sklearn.multioutput import MultiOutputClassifier
-from src.baselines.temporal.data.image_dataset_pretrained import ImageDataset
-from src.baselines.external.models.ibot import vit_base
+from src.baselines.external.medcoss.model import MedCoSS
+from src.baselines.temporal.data.image_dataset_withoutTime import ImageDataset
 
-model_key = "temporal_pred_ibot_pretrained"
-EMBEDDING_DIM = 768
+model_key = "medcoss"
 
 SEED = 4
 random.seed(SEED)
@@ -21,7 +19,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 2
+cuda_num = 0
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
@@ -30,26 +28,41 @@ data_dir = "/shared/eng/bpt3/data/UniViT/data"
 save_dir = "/shared/eng/bpt3/data/UniViT/save"
 tune_data = pickle.load(open(f"{data_dir}/tuningTemporalDataset.pkl", "rb"))
 tune_data = {
-    task: [p for p in tune_data[task] if p[-1][4] is not None] for task in tune_data
+    task: [[p] for p in tune_data[task] if p[-1][4] is not None] for task in tune_data
 }
 test_data = pickle.load(open(f"{data_dir}/testingTemporalDataset.pkl", "rb"))
 test_data = {
-    task: [p for p in test_data[task] if p[-1][4] is not None] for task in test_data
+    task: [[p] for p in test_data[task] if p[-1][4] is not None] for task in test_data
 }
 task_map = pickle.load(open(f"{data_dir}/taskMap.pkl", "rb"))
 valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t]]
 tune_data = {task: tune_data[task] for task in valid_tasks}
 test_data = {task: test_data[task] for task in valid_tasks}
 
-model = vit_base()
+model = MedCoSS(
+    config.max_height,
+    config.max_width,
+    config.max_depth,
+    config.max_time,
+    config.num_channels,
+    config.patch_size,
+    config.depth_patch_size,
+    config.time_patch_size,
+    config.representation_size,
+    config.num_layers,
+    config.num_heads,
+    config.projection_size,
+    config.mlp_dim,
+    config.dropout,
+    config.attention_dropout,
+    config.mask_prob,
+).to(device)
+print("Loading previous model")
 model.load_state_dict(
-    torch.utils.model_zoo.load_url(
-        "https://lf3-nlp-opensource.bytetos.com/obj/nlp-opensource/archive/2022/ibot/vitb_16_rand_mask/checkpoint_teacher.pth"
-    )["state_dict"]
+    torch.load(f"{save_dir}/{model_key}.pt", map_location="cpu")["model"], strict=False
 )
 model.eval()
 model.requires_grad_(False)
-model.to(device)
 
 allResults = {}
 for task in tune_data:
@@ -71,16 +84,7 @@ for task in tune_data:
         continue
         
     print(f'\n\nDownstream Evaluation on {task}')
-    task_tune_data = ImageDataset(
-        task_tune,
-        config,
-        "cpu",
-        patch_size=14,
-        image_size=224,
-        augment=False,
-        downstream=True,
-        multiclass=multiclass,
-    )
+    task_tune_data = ImageDataset(task_tune, config, "cpu", multiclass=multiclass)
     task_tune_loader = DataLoader(
         task_tune_data,
         batch_size=config.downstream_batch_size,
@@ -88,16 +92,7 @@ for task in tune_data:
         num_workers=config.num_workers,
     )
     task_test = test_data[task]
-    task_test_data = ImageDataset(
-        task_test,
-        config,
-        "cpu",
-        patch_size=14,
-        image_size=224,
-        augment=False,
-        downstream=True,
-        multiclass=multiclass,
-    )
+    task_test_data = ImageDataset(task_test, config, "cpu", multiclass=multiclass)
     task_test_loader = DataLoader(
         task_test_data,
         batch_size=config.downstream_batch_size,
@@ -111,24 +106,24 @@ for task in tune_data:
         downstream = MultiOutputClassifier(downstream)
     X = []
     y = []
-    
-    for batch_images, batch_labels in tqdm(task_tune_loader, desc=f"{task} Tuning", leave=False):
+
+    for batch_images, batch_dimensions, batch_labels in tqdm(task_tune_loader, desc=f"{task} Tuning", leave=False):
         batch_images = batch_images.to(device)
         with torch.no_grad():
-            representations = model(batch_images)
+            representations = model.embed(batch_images, batch_dimensions)
             X.extend(representations.cpu().tolist())
             y.extend(batch_labels.cpu().tolist())
-
+            
     downstream.fit(X, y)
 
     task_preds = []
     task_labels = []
-    for batch_images, batch_labels in tqdm(
+    for batch_images, batch_dimensions, batch_labels in tqdm(
         task_test_loader, desc=f"{task} Testing", leave=False
     ):
         batch_images = batch_images.to(device)
         with torch.no_grad():
-            representations = model(batch_images)
+            representations = model.embed(batch_images, batch_dimensions)
             predictions = downstream.predict_proba(representations.cpu().numpy())
             if taskType == "Multi-Label Classification":
                 predictions = np.array(predictions).transpose(1, 0, 2)[:,:,1]
@@ -188,4 +183,4 @@ for task in tune_data:
         print(taskResults)
 
     allResults[task] = taskResults
-pickle.dump(allResults, open(f"{save_dir}/{model_key}_downstreamResults.pkl", "wb"))
+pickle.dump(allResults, open(f'{save_dir}/{model_key}_temporal_withoutTime_downstreamResults.pkl', 'wb'))

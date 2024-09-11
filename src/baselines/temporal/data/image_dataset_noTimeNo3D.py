@@ -1,3 +1,4 @@
+import time
 import torch
 import random
 import numpy as np
@@ -6,16 +7,13 @@ import torch.nn.functional as F
 from torchvision import transforms
 from torch.utils.data import Dataset
 
-MIN_CROP = 0.8
 MIN_RESOLUTION = 32
 
 class ImageDataset(Dataset):
-    def __init__(self, dataset, config, device, augment=False, downstream=False, multiclass=False):
+    def __init__(self, dataset, config, device, multiclass=False):
         self.dataset = dataset
         self.config = config
         self.device = device
-        self.init_augment = augment
-        self.downstream = downstream
         self.multiclass = multiclass
         self.transform = transforms.Compose([
             transforms.ToTensor(),
@@ -23,7 +21,7 @@ class ImageDataset(Dataset):
 
     def __len__(self):
         return len(self.dataset)
-      
+
     def adjust_size(self, origDim):
         if origDim[0] > self.config.max_height:
             scale_factor_height = self.config.max_height / origDim[1]
@@ -33,27 +31,37 @@ class ImageDataset(Dataset):
             scale_factor_width = self.config.max_width / origDim[2]
         else:
             scale_factor_width = 1
-        
+
         scale_factor_image = min(scale_factor_height, scale_factor_width)
         newHeight = min(max(int(origDim[0] * scale_factor_image), MIN_RESOLUTION), self.config.max_height)
         newWidth = min(max(int(origDim[1] * scale_factor_image), MIN_RESOLUTION), self.config.max_width)
         return (newHeight, newWidth)
-      
+
     def load_image(self, image_path, chosenDim):
-        if image_path.endswith('.npy'):
+        if image_path.endswith(".npy"):
             img = torch.tensor(np.load(image_path), dtype=torch.float)
             if len(img.shape) == 4:
                 img = img[:,:,:,0]
             img = img[:, :, img.shape[2] // 2] # Take middle depth for 3D images
             img = img.unsqueeze(0).repeat(3, 1, 1)
-        elif image_path.endswith('.jpg') or image_path.endswith('.png') or image_path.endswith('.tif'):
-            img = Image.open(image_path).convert('RGB')
-            img = self.transform(img)
+        elif (
+            image_path.endswith('.jpg') 
+            or image_path.endswith('.png') 
+            or image_path.endswith('.tif')
+        ):
+            img = Image.open(image_path).convert("RGB")
+            transform = transforms.Compose(
+                [
+                    transforms.Resize((chosenDim[1], chosenDim[2])),
+                    transforms.ToTensor(),
+                ]
+            )
+            img = transform(img)
         else:
-            raise ValueError('Invalid image format')
-        
+            raise ValueError("Invalid image format")
+
         currDim = tuple(img[0, :, :].shape)
-        if chosenDim is not None and chosenDim != currDim:
+        if currDim != chosenDim:
             if currDim[0] == chosenDim[1] and currDim[1] == chosenDim[0]:
                 img = img.permute(0, 2, 1)
             elif (currDim[0] > chosenDim[0]) == (chosenDim[1] > currDim[1]) and (currDim[0] != chosenDim[0] and currDim[1] != chosenDim[1]):
@@ -66,64 +74,30 @@ class ImageDataset(Dataset):
                 img = img.squeeze(0)
 
         return img
-    
-    def random_crop(self, img, dim):
-        crop_height = random.randint(int(dim[0] * MIN_CROP), img.shape[1])  # Adjust range as needed
-        crop_width = random.randint(int(dim[1] * MIN_CROP), img.shape[2])  # Adjust range as needed
-        i, j, h, w = transforms.RandomCrop.get_params(img[0, :, :], output_size=(crop_height, crop_width))
-        img[:, :crop_height, :crop_width] = img[:, i:i+h, j:j+w]
-        img[:, crop_height:, :] = 0
-        img[:, :, crop_width:] = 0
-        dim[0] = crop_height
-        dim[1] = crop_width
-        return img, dim
 
-    def random_resize(self, img, dim):
-        min_scale = max(MIN_RESOLUTION / dim[0], MIN_RESOLUTION / dim[1])
-        max_scale = min(self.config.max_height / dim[0], self.config.max_width / dim[1])
-        scale = random.uniform(min_scale, max_scale)
-        height = min(max(int(dim[0] * scale), MIN_RESOLUTION), self.config.max_height)
-        width = min(max(int(dim[1] * scale), MIN_RESOLUTION), self.config.max_width)
-        img[:, :height, :width] = F.interpolate(img[:, :dim[0], :dim[1]].unsqueeze(0), size=(height, width), mode='bilinear', align_corners=False).squeeze(0)
-        img[:, height:, :] = 0
-        img[:, :, width:] = 0
-        dim[0] = height
-        dim[1] = width
-        return img, dim
-    
-    def augment(self, img, dim):
-        if random.random() < 0.5:
-            img, dim = self.random_resize(img, dim)
-        else:
-            img, dim = self.random_crop(img, dim)
-                
-        return img, dim
-        
-    def augment_batch(self, img, dim):
-        img = img.clone()
-        dim = dim.clone()
-        for i in range(img.shape[0]):
-            img[i], dim[i] = self.augment(img[i], dim[i])
-            
-        return img, dim
+    def load_image_with_retries(self, path, chosenDim, max_attempts=5, delay=1):
+        attempts = 0
+        errMessage = ""
+        while attempts < max_attempts:
+            try:
+                image_tensor = self.load_image(path, chosenDim)
+                return image_tensor  # Return the loaded image if successful
+            except IOError as e:
+                errMessage = str(e)
+                time.sleep(delay * (2 ** attempts))
+        raise Exception(f"Failed to load image after {max_attempts} attempts: {errMessage}")
 
     def __getitem__(self, idx):
         p = self.dataset[idx]
-        _, _, _, _, labels = p[-1]
-        path, dim, _, _, _ = p[-2]
-        dim = self.adjust_size(dim)
+        path, chosenDim, _, _, labels = p[-1]
         image_tensor = torch.zeros(self.config.num_channels, self.config.max_height, self.config.max_width, dtype=torch.float, device=self.device)
         dimension_tensor = torch.ones(2, dtype=torch.long)
-        img = self.load_image(path, dim)
-        image_tensor[:, :img.shape[1], :img.shape[2]] = img
-        dimension_tensor[0] = img.shape[1]
-        dimension_tensor[1] = img.shape[2]
-            
-        if self.init_augment:
-            image_tensor, dimension_tensor = self.augment(image_tensor, dimension_tensor)
-                    
-        if self.downstream:
-            label_tensor = torch.tensor(labels, dtype=torch.long if self.multiclass else torch.float, device=self.device)
-            return image_tensor, dimension_tensor, label_tensor
         
-        return image_tensor, dimension_tensor
+        chosenDim = self.adjust_size(chosenDim)
+        dimension_tensor[0] = chosenDim[0]
+        dimension_tensor[1] = chosenDim[1]
+        img = self.load_image_with_retries(path, chosenDim)
+        image_tensor[:, :img.shape[1], :img.shape[2]] = img
+            
+        label_tensor = torch.tensor(labels, dtype=torch.long if self.multiclass else torch.float, device=self.device)
+        return image_tensor, dimension_tensor, label_tensor

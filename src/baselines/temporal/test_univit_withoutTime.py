@@ -5,11 +5,11 @@ import numpy as np
 from tqdm import tqdm
 from sklearn import metrics
 from src.config import Config
-from torch.utils.data import DataLoader
 from src.models.univit import UniViT
+from torch.utils.data import DataLoader
 from sklearn.linear_model import LogisticRegression
 from sklearn.multioutput import MultiOutputClassifier
-from src.baselines.temporal.data.image_dataset_noTime2 import ImageDataset
+from src.baselines.temporal.data.image_dataset_withoutTime import ImageDataset
 
 model_key = "univit"
 
@@ -26,7 +26,7 @@ if torch.cuda.is_available():
 
 data_dir = "/shared/eng/bpt3/data/UniViT/data"
 save_dir = "/shared/eng/bpt3/data/UniViT/save"
-# tune_data = pickle.load(open(f"{data_dir}/tuningTemporalDataset.pkl", "rb"))
+tune_data = pickle.load(open(f"{data_dir}/tuningTemporalDataset.pkl", "rb"))
 tune_data = {
     task: [p for p in tune_data[task] if p[-1][4] is not None] for task in tune_data
 }
@@ -56,10 +56,12 @@ model = UniViT(
     config.dropout,
     config.attention_dropout,
     config.mask_prob,
+    config.patch_prob,
+    extra_cls=True,
 ).to(device)
 print("Loading previous model")
 model.load_state_dict(
-    torch.load(f"{save_dir}/{model_key}.pt", map_location="cpu")["model"], strict=False
+    torch.load(f"{save_dir}/{model_key}.pt", map_location="cpu")["model"]
 )
 model.eval()
 model.requires_grad_(False)
@@ -84,9 +86,7 @@ for task in tune_data:
         continue
         
     print(f'\n\nDownstream Evaluation on {task}')
-    task_tune_data = ImageDataset(
-        task_tune, config, "cpu", augment=False, downstream=True, multiclass=multiclass
-    )
+    task_tune_data = ImageDataset(task_tune, config, "cpu", multiclass=multiclass)
     task_tune_loader = DataLoader(
         task_tune_data,
         batch_size=config.downstream_batch_size,
@@ -94,9 +94,7 @@ for task in tune_data:
         num_workers=config.num_workers,
     )
     task_test = test_data[task]
-    task_test_data = ImageDataset(
-        task_test, config, "cpu", augment=False, downstream=True, multiclass=multiclass
-    )
+    task_test_data = ImageDataset(task_test, config, "cpu", multiclass=multiclass)
     task_test_loader = DataLoader(
         task_test_data,
         batch_size=config.downstream_batch_size,
@@ -187,4 +185,4 @@ for task in tune_data:
         print(taskResults)
 
     allResults[task] = taskResults
-pickle.dump(allResults, open(f"{save_dir}/{model_key}_temporal_pred_withoutTime_downstreamResults.pkl", "wb"))
+pickle.dump(allResults, open(f"{save_dir}/{model_key}_temporal_withoutTime_downstreamResults.pkl", "wb"))

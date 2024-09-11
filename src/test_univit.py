@@ -11,7 +11,7 @@ from src.data.image_dataset import ImageDataset
 from sklearn.linear_model import LogisticRegression
 from sklearn.multioutput import MultiOutputClassifier
 
-model_key = "univit_more"
+model_key = "univit"
 
 SEED = 4
 random.seed(SEED)
@@ -26,19 +26,15 @@ if torch.cuda.is_available():
 
 data_dir = "/shared/eng/bpt3/data/UniViT/data"
 save_dir = "/shared/eng/bpt3/data/UniViT/save"
-# tune_data = pickle.load(open(f"{data_dir}/tuningDataset.pkl", "rb"))
+tune_data = pickle.load(open(f"{data_dir}/tuningDataset.pkl", "rb"))
 tune_data = {
     task: [[p] for p in tune_data[task] if p[4] is not None] for task in tune_data
 }
-tune_data['All PET'] = tune_data['Amyloid PET'] + tune_data['FDG PET']
 test_data = pickle.load(open(f"{data_dir}/testingDataset.pkl", "rb"))
 test_data = {
     task: [[p] for p in test_data[task] if p[4] is not None] for task in test_data
 }
-test_data['All PET'] = test_data['Amyloid PET'] + test_data['FDG PET']
 task_map = pickle.load(open(f"{data_dir}/taskMap.pkl", "rb"))
-task_map['All PET'] = 'Multi-Class Classification'
-tasks_3D = ['Amyloid PET', 'FDG PET', 'PET', 'MRI', 'Cardiac MRI (ACDC)', 'CT']
 model = UniViT(
     config.max_height,
     config.max_width,
@@ -61,15 +57,13 @@ model = UniViT(
 ).to(device)
 print("Loading previous model")
 model.load_state_dict(
-    torch.load(f"{save_dir}/{model_key}.pt", map_location="cpu")["model"], strict=False
+    torch.load(f"{save_dir}/{model_key}.pt", map_location="cpu")["model"]
 )
 model.eval()
 model.requires_grad_(False)
 
 allResults = {}
-for task in tasks_3D:
-    if 'Hist' in task:
-        continue
+for task in tune_data:
     if task not in task_map or task_map[task] not in ["Multi-Class Classification", "Multi-Label Classification"]:
         continue
     
@@ -95,7 +89,7 @@ for task in tasks_3D:
         task_tune_data,
         batch_size=config.downstream_batch_size,
         shuffle=True,
-        num_workers=4,
+        num_workers=config.num_workers,
     )
     task_test = test_data[task]
     task_test_data = ImageDataset(
@@ -105,7 +99,7 @@ for task in tasks_3D:
         task_test_data,
         batch_size=config.downstream_batch_size,
         shuffle=False,
-        num_workers=4,
+        num_workers=config.num_workers,
     )
 
     taskType = task_map[task]

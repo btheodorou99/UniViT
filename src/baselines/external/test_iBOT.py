@@ -6,14 +6,14 @@ import numpy as np
 from tqdm import tqdm
 from sklearn import metrics
 from src.config import Config
+from torchvision import transforms
 from torch.utils.data import DataLoader
 from sklearn.linear_model import LogisticRegression
 from sklearn.multioutput import MultiOutputClassifier
-from src.baselines.external.models.ibot import vit_base
 from src.data.image_dataset_pretrained import ImageDataset
+from src.baselines.external.ibot.models.vision_transformer import vit_base
 
-model_key = "ibot_pretrained"
-EMBEDDING_DIM = 768
+model_key = "ibot"
 
 SEED = 4
 random.seed(SEED)
@@ -32,50 +32,49 @@ tune_data = pickle.load(open(f"{data_dir}/tuningDataset.pkl", "rb"))
 tune_data = {
     task: [p for p in tune_data[task] if p[4] is not None] for task in tune_data
 }
-tune_data['All PET'] = tune_data['Amyloid PET'] + tune_data['FDG PET']
 test_data = pickle.load(open(f"{data_dir}/testingDataset.pkl", "rb"))
 test_data = {
     task: [p for p in test_data[task] if p[4] is not None] for task in test_data
 }
-test_data['All PET'] = test_data['Amyloid PET'] + test_data['FDG PET']
 task_map = pickle.load(open(f"{data_dir}/taskMap.pkl", "rb"))
-task_map['All PET'] = 'Multi-Class Classification'
 
-model = vit_base()
-model.load_state_dict(
-    torch.utils.model_zoo.load_url(
-        "https://lf3-nlp-opensource.bytetos.com/obj/nlp-opensource/archive/2022/ibot/vitb_16_rand_mask/checkpoint_teacher.pth"
-    )["state_dict"]
-)
+model = vit_base(patch_size=config.patch_size)
+model.load_state_dict(torch.load(f"{save_dir}/{model_key}.pt", map_location='cpu')['student'])
 model.eval()
 model.requires_grad_(False)
 model.to(device)
 
+transform = transforms.Compose([
+    transforms.Resize((config.max_height, config.max_width), interpolation=3),
+    transforms.ToTensor(),
+    transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+])
+
 allResults = {}
 for task in tune_data:
-    if 'All PET' not in task:
-        continue
     if task not in task_map or task_map[task] not in ["Multi-Class Classification", "Multi-Label Classification"]:
         continue
     
-    print(f"\n\nDownstream Evaluation on {task}")
     task_tune = tune_data[task]
     label = task_tune[0][4]
     if isinstance(label, list):
         label_size = len(label)
         multiclass = False
-    else:
-        label_size = len(set([p[4] for p in task_tune]))
+    elif isinstance(label, int):
+        labels = tuple(sorted(set([p[0][4] for p in task_tune])))
+        label_size = len(labels)
         multiclass = True
-
+        if label_size == 1 or max(labels) != label_size - 1 or tuple(sorted(set([p[0][4] for p in test_data[task]]))) != labels:
+            continue
+    else:
+        continue
+    
+    print(f"\n\nDownstream Evaluation on {task}")
     task_tune_data = ImageDataset(
         task_tune,
         config,
         "cpu",
-        patch_size=14,
-        image_size=224,
-        augment=False,
-        downstream=True,
+        transform=transform,
         multiclass=multiclass,
     )
     task_tune_loader = DataLoader(
@@ -89,10 +88,7 @@ for task in tune_data:
         task_test,
         config,
         "cpu",
-        patch_size=14,
-        image_size=224,
-        augment=False,
-        downstream=True,
+        transform=transform,
         multiclass=multiclass,
     )
     task_test_loader = DataLoader(
@@ -108,7 +104,7 @@ for task in tune_data:
         downstream = MultiOutputClassifier(downstream)
     X = []
     y = []
-    
+
     for batch_images, batch_labels in tqdm(task_tune_loader, desc=f"{task} Tuning", leave=False):
         batch_images = batch_images.to(device)
         with torch.no_grad():

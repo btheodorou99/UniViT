@@ -35,12 +35,12 @@ class ImageDataset(Dataset):
             scale_factor_width = self.config.max_width / origDim[2]
         else:
             scale_factor_width = 1
-
+        
         scale_factor_image = min(scale_factor_height, scale_factor_width)
         newHeight = min(max(int(origDim[1] * scale_factor_image), MIN_RESOLUTION), self.config.max_height)
         newWidth = min(max(int(origDim[2] * scale_factor_image), MIN_RESOLUTION), self.config.max_width)
         return (newSlice, newHeight, newWidth)
-
+      
     def load_image(self, image_path, chosenDim):
         if image_path.endswith(".npy"):
             img = torch.tensor(np.load(image_path), dtype=torch.float)
@@ -105,7 +105,7 @@ class ImageDataset(Dataset):
     def __getitem__(self, idx):
         p = self.dataset[idx]
         _, chosenDim, _, _, labels = p[-1]
-        p = p[-self.config.max_time:]
+        p = p[-1:]
         image_tensor = torch.zeros(
             self.config.max_time, 
             self.config.max_depth, 
@@ -116,12 +116,8 @@ class ImageDataset(Dataset):
             device=self.device
         )
         dimension_tensor = torch.ones(4, dtype=torch.long)
-        if len(p) > self.config.max_time:
-            indices = list(range(len(p)))
-            random.shuffle(indices)
-            p = [p[i] for i in sorted(indices[:self.config.max_time])]
-
-        chosenDim = self.adjust_size(chosenDim)
+               
+        chosenDim = self.adjust_size(chosenDim)    
         dimension_tensor[0] = len(p)
         dimension_tensor[1] = chosenDim[0]
         dimension_tensor[2] = chosenDim[1]
@@ -129,6 +125,6 @@ class ImageDataset(Dataset):
         for j, (path, _, _, _, _) in enumerate(p):
             img = self.load_image_with_retries(path, chosenDim)
             image_tensor[j, :img.shape[0], :, :img.shape[2], :img.shape[3]] = img
-
+            
         label_tensor = torch.tensor(labels, dtype=torch.long if self.multiclass else torch.float, device=self.device)
         return image_tensor, dimension_tensor, label_tensor

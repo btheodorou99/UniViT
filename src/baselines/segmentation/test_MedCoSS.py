@@ -9,7 +9,7 @@ from src.config import Config
 import medpy.metric.binary as metrics
 from torch.utils.data import DataLoader
 from src.models.downstream import SegmentationModel
-from src.baselines.external.models.medcoss import MedCoSS
+from src.baselines.external.medcoss.model import MedCoSS
 from src.baselines.segmentation.data.image_dataset import ImageDataset
 
 model_key = "medcoss"
@@ -98,7 +98,7 @@ for task in valid_tasks:
     downstream = SegmentationModel(config.representation_size, config.patch_size, config.max_depth).to(device)
     optimizer = torch.optim.Adam(downstream.parameters(), lr=config.downstream_lr)
     for epoch in tqdm(
-        range(10*config.downstream_epochs), leave=False, desc=f"{task} Tuning"
+        range(config.downstream_epochs), leave=False, desc=f"{task} Tuning"
     ):
         for batch_images, batch_dimensions, batch_labels in tqdm(
             task_tune_loader, desc=f"{task} Tuning Epoch {epoch+1}", leave=False

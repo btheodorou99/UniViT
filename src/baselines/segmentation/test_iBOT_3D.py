@@ -6,13 +6,15 @@ import numpy as np
 from tqdm import tqdm
 from sklearn import metrics
 from src.config import Config
+from torchvision import transforms
 import medpy.metric.binary as metrics
 from torch.utils.data import DataLoader
 from src.models.downstream import SegmentationModel
+from src.baselines.external.medcoss.ibot import vit_base
+from src.baselines.external.ibot.models.vision_transformer import vit_base
 from src.baselines.segmentation.data.image_dataset_pretrained import ImageDataset
 
-model_key = "dinov2_pretrained3D"
-EMBEDDING_DIM = 768
+model_key = "ibot_pretrained3D"
 
 SEED = 4
 random.seed(SEED)
@@ -40,15 +42,29 @@ valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t] if t in tas
 tune_data = {task: tune_data[task] for task in valid_tasks}
 test_data = {task: test_data[task] for task in valid_tasks}
 
-model = torch.hub.load("facebookresearch/dinov2", "dinov2_vitb14").to(device)
+model = vit_base(patch_size=config.patch_size)
+model.load_state_dict(torch.load(f"{save_dir}/{model_key}.pt", map_location='cpu')['student'])
 model.eval()
 model.requires_grad_(False)
+model.to(device)
+
+transform = transforms.Compose([
+    transforms.Resize((config.max_height, config.max_width), interpolation=3),
+    transforms.ToTensor(),
+    transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+])
 
 allResults = {}
 for task in valid_tasks:
     print(f"\n\nDownstream Evaluation on {task}")
     task_tune = tune_data[task]
-    task_tune_data = ImageDataset(task_tune, config, "cpu", patch_size=14, image_size=config.max_height, image_depth=config.max_depth)
+    task_tune_data = ImageDataset(
+        task_tune,
+        config,
+        "cpu",
+        transform=transform,
+        image_depth=config.max_depth,
+    )
     task_tune_loader = DataLoader(
         task_tune_data,
         batch_size=config.downstream_batch_size,
@@ -56,7 +72,13 @@ for task in valid_tasks:
         num_workers=config.num_workers,
     )
     task_test = test_data[task]
-    task_test_data = ImageDataset(task_test, config, "cpu", patch_size=14, image_size=config.max_height, image_depth=config.max_depth)
+    task_test_data = ImageDataset(
+        task_test,
+        config,
+        "cpu",
+        transform=transform,
+        image_depth=config.max_depth,
+    )
     task_test_loader = DataLoader(
         task_test_data,
         batch_size=config.downstream_batch_size,
@@ -74,10 +96,10 @@ for task in valid_tasks:
         dice_loss = 1 - dice_score.mean()
         return dice_loss
 
-    downstream = SegmentationModel(EMBEDDING_DIM, 14, config.max_depth, True).to(device)
+    downstream = SegmentationModel(config.representation_size, 14, config.max_depth, True).to(device)
     optimizer = torch.optim.Adam(downstream.parameters(), lr=config.downstream_lr)
     for epoch in tqdm(
-        range(10*config.downstream_epochs), leave=False, desc=f"{task} Tuning"
+        range(config.downstream_epochs), leave=False, desc=f"{task} Tuning"
     ):
         for batch_images, batch_labels in tqdm(
             task_tune_loader, desc=f"{task} Tuning Epoch {epoch+1}", leave=False
@@ -90,8 +112,8 @@ for task in valid_tasks:
             batch_images = batch_images.permute(0,2,1,3,4).repeat(1,1,3,1,1)
             batch_images = batch_images.view(-1, 3, config.max_height, config.max_height)
             with torch.no_grad():
-                representations = model.forward_features(batch_images)['x_norm_patchtokens']
-                representations = representations.reshape(bs, depth, -1, EMBEDDING_DIM)
+                representations = model(batch_images, return_all_tokens=True)[:,1:]
+                representations = representations.reshape(bs, depth, -1, config.representation_size)
             predictions = downstream(representations)
             loss = bce_loss(predictions, batch_labels) + dice_loss(predictions, batch_labels)
             loss.backward()
@@ -111,8 +133,8 @@ for task in valid_tasks:
         batch_images = batch_images.permute(0,2,1,3,4).repeat(1,1,3,1,1)
         batch_images = batch_images.view(-1, 3, config.max_height, config.max_height)
         with torch.no_grad():
-            representations = model.forward_features(batch_images)['x_norm_patchtokens']
-            representations = representations.reshape(bs, depth, -1, EMBEDDING_DIM)
+            representations = model(batch_images, return_all_tokens=True)[:,1:]
+            representations = representations.reshape(bs, depth, -1, config.representation_size)
             predictions = downstream(representations)
             predictions = (predictions > 0.5).cpu().numpy()
             
@@ -128,4 +150,4 @@ for task in valid_tasks:
     taskResults = {"Dice Coefficient": dice_score, "95th Percentile Hausdorff Distance": hausdorff_score}
     print(taskResults)
     allResults[task] = taskResults
-pickle.dump(allResults, open(f"{save_dir}/{model_key}_segmentationResults.pkl", "wb"))
+pickle.dump(allResults, open(f"{save_dir}/{model_key}_3D_segmentationResults.pkl", "wb"))

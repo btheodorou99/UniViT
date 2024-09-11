@@ -6,13 +6,14 @@ import numpy as np
 from tqdm import tqdm
 from sklearn import metrics
 from src.config import Config
+from torchvision import transforms
 from torch.utils.data import DataLoader
 from sklearn.linear_model import LogisticRegression
 from sklearn.multioutput import MultiOutputClassifier
-from transformers import AutoModel, AutoImageProcessor
 from src.baselines.temporal.data.image_dataset_pretrained import ImageDataset
+from src.baselines.external.dinov2.dinov2.models.vision_transformer import vit_base
 
-model_key = "temporal_pred_raddino_pretrained"
+model_key = "dinov2"
 EMBEDDING_DIM = 768
 
 SEED = 4
@@ -21,7 +22,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 2
+cuda_num = 0
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
@@ -41,16 +42,30 @@ valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t]]
 tune_data = {task: tune_data[task] for task in valid_tasks}
 test_data = {task: test_data[task] for task in valid_tasks}
 
-repo = "microsoft/rad-dino"
-model = AutoModel.from_pretrained(repo).to(device)
-processor = AutoImageProcessor.from_pretrained(repo)
+model = vit_base(
+    img_size=config.max_height,
+    patch_size=config.patch_size, 
+    embed_dim=config.representation_size,
+    init_values=1e-5,
+    ffn_layer="mlp",
+    block_chunks=0,
+    qkv_bias=True,
+    proj_bias=True,
+    ffn_bias=True,
+    num_register_tokens=0,
+    interpolate_offset=0.1,
+    interpolate_antialias=False,
+)
+model.load_state_dict(torch.load(f"{save_dir}/{model_key}.pt", map_location='cpu')['model'])
 model.eval()
 model.requires_grad_(False)
+model.to(device)
 
-def process_image(image):
-    img = processor(image)
-    img = torch.from_numpy(img['pixel_values'][0])
-    return img
+transform = transforms.Compose([
+    transforms.Resize((config.max_height, config.max_width), interpolation=3),
+    transforms.ToTensor(),
+    transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+])
 
 allResults = {}
 for task in tune_data:
@@ -70,15 +85,13 @@ for task in tune_data:
             continue
     else:
         continue
-        
-    print(f'\n\nDownstream Evaluation on {task}')
+    
+    print(f"\n\nDownstream Evaluation on {task}")
     task_tune_data = ImageDataset(
         task_tune,
         config,
         "cpu",
-        processing_fn=process_image,
-        augment=False,
-        downstream=True,
+        transform=transform,
         multiclass=multiclass,
     )
     task_tune_loader = DataLoader(
@@ -92,9 +105,7 @@ for task in tune_data:
         task_test,
         config,
         "cpu",
-        processing_fn=process_image,
-        augment=False,
-        downstream=True,
+        transform=transform,
         multiclass=multiclass,
     )
     task_test_loader = DataLoader(
@@ -111,11 +122,10 @@ for task in tune_data:
     X = []
     y = []
 
-
     for batch_images, batch_labels in tqdm(task_tune_loader, desc=f"{task} Tuning", leave=False):
         batch_images = batch_images.to(device)
         with torch.no_grad():
-            representations = model(batch_images).pooler_output
+            representations = model(batch_images)
             X.extend(representations.cpu().tolist())
             y.extend(batch_labels.cpu().tolist())
 
@@ -128,7 +138,7 @@ for task in tune_data:
     ):
         batch_images = batch_images.to(device)
         with torch.no_grad():
-            representations = model(batch_images).pooler_output
+            representations = model(batch_images)
             predictions = downstream.predict_proba(representations.cpu().numpy())
             if taskType == "Multi-Label Classification":
                 predictions = np.array(predictions).transpose(1, 0, 2)[:,:,1]
@@ -188,4 +198,4 @@ for task in tune_data:
         print(taskResults)
 
     allResults[task] = taskResults
-pickle.dump(allResults, open(f"{save_dir}/{model_key}_downstreamResults.pkl", "wb"))
+pickle.dump(allResults, open(f"{save_dir}/{model_key}_temporal_downstreamResults.pkl", "wb"))

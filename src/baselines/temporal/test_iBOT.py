@@ -1,3 +1,4 @@
+# https://github.com/facebookresearch/dinov2
 import torch
 import random
 import pickle
@@ -5,14 +6,14 @@ import numpy as np
 from tqdm import tqdm
 from sklearn import metrics
 from src.config import Config
+from torchvision import transforms
 from torch.utils.data import DataLoader
 from sklearn.linear_model import LogisticRegression
 from sklearn.multioutput import MultiOutputClassifier
 from src.baselines.temporal.data.image_dataset_pretrained import ImageDataset
-from src.baselines.external.models.unimodel_2D import Unified_Model as Model2D
-from src.baselines.external.models.unimodel_3D import Unified_Model as Model3D
+from src.baselines.external.ibot.models.vision_transformer import vit_base
 
-model_key = "temporal_pred_medcoss_pretrained"
+model_key = "ibot"
 EMBEDDING_DIM = 768
 
 SEED = 4
@@ -21,7 +22,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 2
+cuda_num = 0
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
@@ -37,13 +38,21 @@ test_data = {
     task: [p for p in test_data[task] if p[-1][4] is not None] for task in test_data
 }
 task_map = pickle.load(open(f"{data_dir}/taskMap.pkl", "rb"))
-flat_tasks = pickle.load(open(f"{data_dir}/flatTasks.pkl", "rb"))
-
 valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t]]
 tune_data = {task: tune_data[task] for task in valid_tasks}
 test_data = {task: test_data[task] for task in valid_tasks}
 
-chkpt = torch.load(f"{save_dir}/medcoss.pt", map_location="cpu")
+model = vit_base(patch_size=config.patch_size)
+model.load_state_dict(torch.load(f"{save_dir}/{model_key}.pt", map_location='cpu')['student'])
+model.eval()
+model.requires_grad_(False)
+model.to(device)
+
+transform = transforms.Compose([
+    transforms.Resize((config.max_height, config.max_width), interpolation=3),
+    transforms.ToTensor(),
+    transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+])
 
 allResults = {}
 for task in tune_data:
@@ -63,28 +72,13 @@ for task in tune_data:
             continue
     else:
         continue
-        
-    print(f'\n\nDownstream Evaluation on {task}')
     
-    if task in flat_tasks:
-        model = Model2D((config.max_height, config.max_height))
-    else:
-        model = Model3D(
-            (config.max_height, config.max_height, max(config.max_depth, 16))
-        )
-
-    model.load_state_dict(chkpt["model"], strict=False)
-    model.to(device)
-    
+    print(f"\n\nDownstream Evaluation on {task}")
     task_tune_data = ImageDataset(
         task_tune,
         config,
         "cpu",
-        patch_size=16,
-        image_size=config.max_height,
-        image_depth=max(config.max_depth,16) if task not in flat_tasks else None,
-        augment=False,
-        downstream=True,
+        transform=transform,
         multiclass=multiclass,
     )
     task_tune_loader = DataLoader(
@@ -98,11 +92,7 @@ for task in tune_data:
         task_test,
         config,
         "cpu",
-        patch_size=16,
-        image_size=config.max_height,
-        image_depth=max(config.max_depth,16) if task not in flat_tasks else None,
-        augment=False,
-        downstream=True,
+        transform=transform,
         multiclass=multiclass,
     )
     task_test_loader = DataLoader(
@@ -118,16 +108,11 @@ for task in tune_data:
         downstream = MultiOutputClassifier(downstream)
     X = []
     y = []
-   
+
     for batch_images, batch_labels in tqdm(task_tune_loader, desc=f"{task} Tuning", leave=False):
         batch_images = batch_images.to(device)
         with torch.no_grad():
-            representations = model(
-                {
-                    "data": batch_images,
-                    "modality": "2D image" if task in flat_tasks else "3D image",
-                }
-            )
+            representations = model(batch_images)
             X.extend(representations.cpu().tolist())
             y.extend(batch_labels.cpu().tolist())
 
@@ -140,12 +125,7 @@ for task in tune_data:
     ):
         batch_images = batch_images.to(device)
         with torch.no_grad():
-            representations = model(
-                {
-                    "data": batch_images,
-                    "modality": "2D image" if task in flat_tasks else "3D image",
-                }
-            )
+            representations = model(batch_images)
             predictions = downstream.predict_proba(representations.cpu().numpy())
             if taskType == "Multi-Label Classification":
                 predictions = np.array(predictions).transpose(1, 0, 2)[:,:,1]
@@ -205,4 +185,4 @@ for task in tune_data:
         print(taskResults)
 
     allResults[task] = taskResults
-pickle.dump(allResults, open(f"{save_dir}/{model_key}_downstreamResults.pkl", "wb"))
+pickle.dump(allResults, open(f"{save_dir}/{model_key}_temporal_downstreamResults.pkl", "wb"))
