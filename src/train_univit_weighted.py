@@ -12,13 +12,16 @@ from sklearn.neighbors import KNeighborsClassifier
 from src.data.image_dataset import ImageDataset, KNNDataset
 from torch.utils.data import DataLoader, WeightedRandomSampler
 
+import torch.multiprocessing
+torch.multiprocessing.set_sharing_strategy('file_system')
+
 # SEED = 4
 # random.seed(SEED)
 # np.random.seed(SEED)
 # torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 2
+cuda_num = 6
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 # if torch.cuda.is_available():
 #     torch.cuda.manual_seed_all(SEED)

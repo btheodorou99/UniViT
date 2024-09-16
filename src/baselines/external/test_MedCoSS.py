@@ -11,6 +11,9 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.multioutput import MultiOutputClassifier
 from src.baselines.external.medcoss.model import MedCoSS
 
+import torch.multiprocessing
+torch.multiprocessing.set_sharing_strategy('file_system')
+
 model_key = "medcoss"
 
 SEED = 4

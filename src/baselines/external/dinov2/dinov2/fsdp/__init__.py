@@ -120,7 +120,7 @@ class FSDPCheckpointer(Checkpointer):
         Returns:
             bool: whether a checkpoint exists in the target directory.
         """
-        save_file = os.path.join(self.save_dir, f"dinov2.pt")
+        save_file = os.path.join(self.save_dir, f"dinov2_last_checkpoint.{rankstr()}")
         return self.path_manager.exists(save_file)
 
     def get_checkpoint_file(self) -> str:
@@ -128,7 +128,7 @@ class FSDPCheckpointer(Checkpointer):
         Returns:
             str: The latest checkpoint file in target directory.
         """
-        save_file = os.path.join(self.save_dir, f"dinov2.pt")
+        save_file = os.path.join(self.save_dir, f"dinov2_last_checkpoint.{rankstr()}")
         try:
             with self.path_manager.open(save_file, "r") as f:
                 last_saved = f.read().strip()
@@ -149,7 +149,7 @@ class FSDPCheckpointer(Checkpointer):
         """
         if distributed.is_enabled():
             torch.distributed.barrier()
-        save_file = os.path.join(self.save_dir, f"dinov2.pt")
+        save_file = os.path.join(self.save_dir, f"dinov2_last_checkpoint.{rankstr()}")
         with self.path_manager.open(save_file, "w") as f:
             f.write(last_filename_basename)  # pyre-ignore
 

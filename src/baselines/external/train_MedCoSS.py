@@ -16,6 +16,10 @@ from src.baselines.external.medcoss.buffer_dataset import (
     BufferDataset,
 )
 
+import torch.multiprocessing
+torch.multiprocessing.set_sharing_strategy('file_system')
+
+
 SEED = 4
 random.seed(SEED)
 np.random.seed(SEED)

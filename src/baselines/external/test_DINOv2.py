@@ -13,6 +13,9 @@ from sklearn.multioutput import MultiOutputClassifier
 from src.data.image_dataset_pretrained import ImageDataset
 from src.baselines.external.dinov2.dinov2.models.vision_transformer import vit_base
 
+import torch.multiprocessing
+torch.multiprocessing.set_sharing_strategy('file_system')
+
 model_key = "dinov2"
 
 SEED = 4

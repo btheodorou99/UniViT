@@ -11,6 +11,9 @@ from src.data.image_dataset import ImageDataset
 from sklearn.linear_model import LogisticRegression
 from sklearn.multioutput import MultiOutputClassifier
 
+import torch.multiprocessing
+torch.multiprocessing.set_sharing_strategy('file_system')
+
 model_key = "univit"
 
 SEED = 4

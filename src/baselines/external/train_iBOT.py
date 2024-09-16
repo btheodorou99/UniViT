@@ -34,6 +34,10 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 warnings.simplefilter(action='ignore', category=DeprecationWarning)
 
+import torch.multiprocessing
+torch.multiprocessing.set_sharing_strategy('file_system')
+
+
 def get_args_parser():
     parser = argparse.ArgumentParser('iBOT', add_help=False)
 

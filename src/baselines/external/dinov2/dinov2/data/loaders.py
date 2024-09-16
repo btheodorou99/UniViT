@@ -209,7 +209,7 @@ def make_data_loader(
         dataset,
         sampler=sampler,
         batch_size=batch_size,
-        num_workers=1, #num_workers,
+        num_workers=num_workers,
         pin_memory=False,
         drop_last=drop_last,
         persistent_workers=persistent_workers,
