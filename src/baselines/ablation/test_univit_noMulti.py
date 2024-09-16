@@ -64,7 +64,7 @@ model.requires_grad_(False)
 
 allResults = {}
 for task in tune_data:
-    print(f"\n\nDownstream Evaluation on {task}")
+    print(f"Downstream Evaluation on {task}")
     task_tune = tune_data[task]
     label = task_tune[0][0][4]
     if isinstance(label, list):
@@ -179,7 +179,7 @@ for task in tune_data:
             "F1 Per Label": f1PerLabel,
             "AUROC Per Label": aurocPerLabel,
         }
-        print(taskResults)
+        print('\t', taskResults)
     elif taskType == "Multi-Class Classification":
         task_probs = np.array(task_preds)
         task_labels = np.array(task_labels)
@@ -188,7 +188,7 @@ for task in tune_data:
         f1 = metrics.f1_score(task_labels, task_preds, average="macro")
         auroc = metrics.roc_auc_score(task_labels, task_probs, average="macro", multi_class="ovr")
         taskResults = {"Accuracy": acc, "F1": f1, "AUROC": auroc}
-        print(taskResults)
+        print('\t', taskResults)
 
     allResults[task] = taskResults
 pickle.dump(allResults, open(f"{save_dir}/{model_key}_downstreamResults.pkl", "wb"))

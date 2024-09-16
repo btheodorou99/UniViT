@@ -44,7 +44,7 @@ allResults = {}
 config.downstream_batch_size = 1024
 config.downstream_epochs = 250
 for task in tune_data:
-    print(f"\n\nDownstream Evaluation on {task}")
+    print(f"Downstream Evaluation on {task}")
     task_tune = tune_data[task]
     label = task_tune[0][0][4]
     if isinstance(label, list):
@@ -171,7 +171,7 @@ for task in tune_data:
             "F1 Per Label": f1PerLabel,
             "AUROC Per Label": aurocPerLabel,
         }
-        print(taskResults)
+        print('\t', taskResults)
         print("TEMPORAL")
         accPerLabel = [
             metrics.accuracy_score(
@@ -210,7 +210,7 @@ for task in tune_data:
             "F1 Per Label": f1PerLabel,
             "AUROC Per Label": aurocPerLabel,
         }
-        print(taskResults)
+        print('\t', taskResults)
     elif taskType == "Multi-Class Classification":
         task_preds1 = np.array(task_preds1)
         task_preds2 = np.array(task_preds2)
@@ -221,11 +221,11 @@ for task in tune_data:
         acc = metrics.accuracy_score(task_labels, task_preds1)
         f1 = metrics.f1_score(task_labels, task_preds1, average="macro")
         taskResults = {"Accuracy": acc, "F1": f1}
-        print(taskResults)
+        print('\t', taskResults)
         print("TEMPORAL")
         acc = metrics.accuracy_score(task_labels, task_preds2)
         f1 = metrics.f1_score(task_labels, task_preds2, average="macro")
         taskResults = {"Accuracy": acc, "F1": f1}
-        print(taskResults)
+        print('\t', taskResults)
 
     allResults[task] = taskResults

@@ -69,7 +69,7 @@ model.requires_grad_(False)
 
 allResults = {}
 for task in valid_tasks:
-    print(f"\n\nDownstream Evaluation on {task}")
+    print(f"Downstream Evaluation on {task}")
     task_tune = tune_data[task]
     task_tune_data = ImageDataset(task_tune, config, "cpu")
     task_tune_loader = DataLoader(
@@ -136,6 +136,6 @@ for task in valid_tasks:
     dice_score = np.mean(dice_values)
     hausdorff_score = np.mean(hausdorff_values)
     taskResults = {"Dice Coefficient": dice_score, "95th Percentile Hausdorff Distance": hausdorff_score}
-    print(taskResults)
+    print('\t', taskResults)
     allResults[task] = taskResults
 pickle.dump(allResults, open(f"{save_dir}/{model_key}_segmentationResults.pkl", "wb"))

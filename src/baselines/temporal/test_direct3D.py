@@ -60,7 +60,7 @@ allResults = {}
 config.downstream_batch_size = 64
 config.downstream_epochs = 100
 for task in tune_data:
-    print(f"\n\nDownstream Evaluation on {task}")
+    print(f"Downstream Evaluation on {task}")
     task_tune = tune_data[task]
     label = task_tune[0][0][4]
     if isinstance(label, list):
@@ -219,7 +219,7 @@ for task in tune_data:
             "F1 Per Label": f1PerLabel,
             "AUROC Per Label": aurocPerLabel,
         }
-        print(taskResults)
+        print('\t', taskResults)
         print("TEMPORAL 3D")
         accPerLabel = [
             metrics.accuracy_score(
@@ -258,7 +258,7 @@ for task in tune_data:
             "F1 Per Label": f1PerLabel,
             "AUROC Per Label": aurocPerLabel,
         }
-        print(taskResults)
+        print('\t', taskResults)
         print("STATIC 2D")
         accPerLabel = [
             metrics.accuracy_score(
@@ -297,7 +297,7 @@ for task in tune_data:
             "F1 Per Label": f1PerLabel,
             "AUROC Per Label": aurocPerLabel,
         }
-        print(taskResults)
+        print('\t', taskResults)
         print("TEMPORAL 2D")
         accPerLabel = [
             metrics.accuracy_score(
@@ -336,7 +336,7 @@ for task in tune_data:
             "F1 Per Label": f1PerLabel,
             "AUROC Per Label": aurocPerLabel,
         }
-        print(taskResults)
+        print('\t', taskResults)
     elif taskType == "Multi-Class Classification":
         task_probs1 = np.array(task_preds1)
         task_probs2 = np.array(task_preds2)
@@ -352,24 +352,24 @@ for task in tune_data:
         f1 = metrics.f1_score(task_labels, task_preds1, average="macro")
         auroc = metrics.roc_auc_score(task_labels, task_probs1, average="macro", multi_class="ovr")
         taskResults = {"Accuracy": acc, "F1": f1, "AUROC": auroc}
-        print(taskResults)
+        print('\t', taskResults)
         print("TEMPORAL 3D")
         acc = metrics.accuracy_score(task_labels, task_preds2)
         f1 = metrics.f1_score(task_labels, task_preds2, average="macro")
         auroc = metrics.roc_auc_score(task_labels, task_probs2, average="macro", multi_class="ovr")
         taskResults = {"Accuracy": acc, "F1": f1, "AUROC": auroc}
-        print(taskResults)
+        print('\t', taskResults)
         print("STATIC 2D")
         acc = metrics.accuracy_score(task_labels, task_preds3)
         f1 = metrics.f1_score(task_labels, task_preds3, average="macro")
         auroc = metrics.roc_auc_score(task_labels, task_probs3, average="macro", multi_class="ovr")
         taskResults = {"Accuracy": acc, "F1": f1, "AUROC": auroc}
-        print(taskResults)
+        print('\t', taskResults)
         print("TEMPORAL 2D")
         acc = metrics.accuracy_score(task_labels, task_preds4)
         f1 = metrics.f1_score(task_labels, task_preds4, average="macro")
         auroc = metrics.roc_auc_score(task_labels, task_probs4, average="macro", multi_class="ovr")
         taskResults = {"Accuracy": acc, "F1": f1, "AUROC": auroc}
-        print(taskResults)
+        print('\t', taskResults)
 
     allResults[task] = taskResults

@@ -42,8 +42,23 @@ valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t] if t in tas
 tune_data = {task: tune_data[task] for task in valid_tasks}
 test_data = {task: test_data[task] for task in valid_tasks}
 
-model = vit_base(patch_size=config.patch_size)
-model.load_state_dict(torch.load(f"{save_dir}/{model_key}.pt", map_location='cpu')['student'])
+model = vit_base(
+    patch_size=config.patch_size,
+    drop_path_rate=0.1,
+    return_all_tokens=True,
+)
+state_dict = torch.load(f"{save_dir}/{model_key}.pt", map_location='cpu')['student']
+new_state_dict = {}
+for key, value in state_dict.items():
+    if 'masked_embed' in key:
+        continue # Masked embedding is not needed for downstream evaluation
+    if key.startswith('module.backbone.'):
+        new_key = key[len('module.backbone.'):]  # Remove the 'module.backbone.' prefix
+        new_state_dict[new_key] = value
+    elif key.startswith('module.head.'):
+        continue # Head is not needed for downstream evaluation
+    else:
+        new_state_dict[key] = value  # Otherwise, keep the key as it is
 model.eval()
 model.requires_grad_(False)
 model.to(device)
@@ -56,7 +71,7 @@ transform = transforms.Compose([
 
 allResults = {}
 for task in valid_tasks:
-    print(f"\n\nDownstream Evaluation on {task}")
+    print(f"Downstream Evaluation on {task}")
     task_tune = tune_data[task]
     task_tune_data = ImageDataset(
         task_tune,
@@ -148,6 +163,6 @@ for task in valid_tasks:
     dice_score = np.mean(dice_values)
     hausdorff_score = np.mean(hausdorff_values)
     taskResults = {"Dice Coefficient": dice_score, "95th Percentile Hausdorff Distance": hausdorff_score}
-    print(taskResults)
+    print('\t', taskResults)
     allResults[task] = taskResults
 pickle.dump(allResults, open(f"{save_dir}/{model_key}_3D_segmentationResults.pkl", "wb"))

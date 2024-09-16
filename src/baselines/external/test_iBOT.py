@@ -24,7 +24,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 0
+cuda_num = 3
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
@@ -41,8 +41,24 @@ test_data = {
 }
 task_map = pickle.load(open(f"{data_dir}/taskMap.pkl", "rb"))
 
-model = vit_base(patch_size=config.patch_size)
-model.load_state_dict(torch.load(f"{save_dir}/{model_key}.pt", map_location='cpu')['student'])
+model = vit_base(
+    patch_size=config.patch_size,
+    drop_path_rate=0.1,
+    return_all_tokens=False,
+)
+state_dict = torch.load(f"{save_dir}/{model_key}.pt", map_location='cpu')['student']
+new_state_dict = {}
+for key, value in state_dict.items():
+    if 'masked_embed' in key:
+        continue # Masked embedding is not needed for downstream evaluation
+    if key.startswith('module.backbone.'):
+        new_key = key[len('module.backbone.'):]  # Remove the 'module.backbone.' prefix
+        new_state_dict[new_key] = value
+    elif key.startswith('module.head.'):
+        continue # Head is not needed for downstream evaluation
+    else:
+        new_state_dict[key] = value  # Otherwise, keep the key as it is
+model.load_state_dict(new_state_dict)
 model.eval()
 model.requires_grad_(False)
 model.to(device)
@@ -72,7 +88,7 @@ for task in tune_data:
     else:
         continue
     
-    print(f"\n\nDownstream Evaluation on {task}")
+    print(f"Downstream Evaluation on {task}")
     task_tune_data = ImageDataset(
         task_tune,
         config,
@@ -172,7 +188,7 @@ for task in tune_data:
             "F1 Per Label": f1PerLabel,
             "AUROC Per Label": aurocPerLabel,
         }
-        print(taskResults)
+        print('\t', taskResults)
     elif taskType == "Multi-Class Classification":
         task_probs = np.array(task_preds)
         task_labels = np.array(task_labels)
@@ -181,7 +197,7 @@ for task in tune_data:
         f1 = metrics.f1_score(task_labels, task_preds, average="macro")
         auroc = metrics.roc_auc_score(task_labels, task_probs, average="macro", multi_class="ovr")
         taskResults = {"Accuracy": acc, "F1": f1, "AUROC": auroc}
-        print(taskResults)
+        print('\t', taskResults)
 
     allResults[task] = taskResults
 pickle.dump(allResults, open(f"{save_dir}/{model_key}_downstreamResults.pkl", "wb"))

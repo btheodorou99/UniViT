@@ -42,8 +42,23 @@ valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t]]
 tune_data = {task: tune_data[task] for task in valid_tasks}
 test_data = {task: test_data[task] for task in valid_tasks}
 
-model = vit_base(patch_size=config.patch_size)
-model.load_state_dict(torch.load(f"{save_dir}/{model_key}.pt", map_location='cpu')['student'])
+model = vit_base(
+    patch_size=config.patch_size,
+    drop_path_rate=0.1,
+    return_all_tokens=False,
+)
+state_dict = torch.load(f"{save_dir}/{model_key}.pt", map_location='cpu')['student']
+new_state_dict = {}
+for key, value in state_dict.items():
+    if 'masked_embed' in key:
+        continue # Masked embedding is not needed for downstream evaluation
+    if key.startswith('module.backbone.'):
+        new_key = key[len('module.backbone.'):]  # Remove the 'module.backbone.' prefix
+        new_state_dict[new_key] = value
+    elif key.startswith('module.head.'):
+        continue # Head is not needed for downstream evaluation
+    else:
+        new_state_dict[key] = value  # Otherwise, keep the key as it is
 model.eval()
 model.requires_grad_(False)
 model.to(device)
@@ -73,7 +88,7 @@ for task in tune_data:
     else:
         continue
     
-    print(f"\n\nDownstream Evaluation on {task}")
+    print(f"Downstream Evaluation on {task}")
     task_tune_data = ImageDataset(
         task_tune,
         config,
@@ -173,7 +188,7 @@ for task in tune_data:
             "F1 Per Label": f1PerLabel,
             "AUROC Per Label": aurocPerLabel,
         }
-        print(taskResults)
+        print('\t', taskResults)
     elif taskType == "Multi-Class Classification":
         task_probs = np.array(task_preds)
         task_labels = np.array(task_labels)
@@ -182,7 +197,7 @@ for task in tune_data:
         f1 = metrics.f1_score(task_labels, task_preds, average="macro")
         auroc = metrics.roc_auc_score(task_labels, task_probs, average="macro", multi_class="ovr")
         taskResults = {"Accuracy": acc, "F1": f1, "AUROC": auroc}
-        print(taskResults)
+        print('\t', taskResults)
 
     allResults[task] = taskResults
 pickle.dump(allResults, open(f"{save_dir}/{model_key}_temporal_downstreamResults.pkl", "wb"))

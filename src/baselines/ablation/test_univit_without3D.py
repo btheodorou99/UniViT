@@ -86,7 +86,7 @@ for task in tasks_3D:
     else:
         continue
         
-    print(f'\n\nDownstream Evaluation on {task}')
+    print(f'Downstream Evaluation on {task}')
     task_tune_data = ImageDataset(
         task_tune, config, "cpu", augment=False, downstream=True, multiclass=multiclass, depth=False
     )
@@ -178,7 +178,7 @@ for task in tasks_3D:
             "F1 Per Label": f1PerLabel,
             "AUROC Per Label": aurocPerLabel,
         }
-        print(taskResults)
+        print('\t', taskResults)
     elif taskType == "Multi-Class Classification":
         task_probs = np.array(task_preds)
         task_labels = np.array(task_labels)
@@ -187,7 +187,7 @@ for task in tasks_3D:
         f1 = metrics.f1_score(task_labels, task_preds, average="macro")
         auroc = metrics.roc_auc_score(task_labels, task_probs, average="macro", multi_class="ovr")
         taskResults = {"Accuracy": acc, "F1": f1, "AUROC": auroc}
-        print(taskResults)
+        print('\t', taskResults)
 
     allResults[task] = taskResults
     pickle.dump(allResults, open(f"{save_dir}/{model_key}_without3D_downstreamResults.pkl", "wb"))
