@@ -13,7 +13,7 @@ class ImageDataset(Dataset):
         config,
         device,
         transform=None,
-        image_depth=None,
+        image_depth=False,
         multiclass=False,
     ):
         self.dataset = dataset
@@ -32,15 +32,12 @@ class ImageDataset(Dataset):
             if len(img.shape) == 4:
                 img = img[:, :, :, 0]
             img = img.permute(2, 0, 1).unsqueeze(0)  # Only 1 channel
-            if self.patch_size is None:
-                img = self.transform(self.toImg(img))
-            elif self.image_size is not None:
-                img = F.interpolate(
-                    img.unsqueeze(0),
-                    size=(self.image_depth, self.image_size, self.image_size),
-                    mode="trilinear",
-                    align_corners=False,
-                ).squeeze(0)
+            img = F.interpolate(
+                img.unsqueeze(0),
+                size=(self.config.max_depth, self.config.max_height, self.config.max_width),
+                mode="trilinear",
+                align_corners=False,
+            ).squeeze(0)
         else:
             raise ValueError("Invalid 3D image format")
 
@@ -73,7 +70,7 @@ class ImageDataset(Dataset):
                 with open(path, 'rb') as f:
                     image_tensor = (
                         self.load_image(path)
-                        if self.image_depth is None
+                        if not self.image_depth
                         else self.load_image_3D(path)
                     )
                 return image_tensor  # Return the loaded image if successful

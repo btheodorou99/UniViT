@@ -24,7 +24,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 0
+cuda_num = 7
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
@@ -44,9 +44,8 @@ task_map = pickle.load(open(f"{data_dir}/taskMap.pkl", "rb"))
 model = vit_base(
     img_size=config.max_height,
     patch_size=config.patch_size, 
-    embed_dim=config.representation_size,
     init_values=1e-5,
-    ffn_layer="mlp",
+    ffn_layer="swiglu",
     block_chunks=0,
     qkv_bias=True,
     proj_bias=True,
@@ -54,8 +53,25 @@ model = vit_base(
     num_register_tokens=0,
     interpolate_offset=0.1,
     interpolate_antialias=False,
+    drop_path_rate=0.3,
+    drop_path_uniform=True,
 )
-model.load_state_dict(torch.load(f"{save_dir}/{model_key}.pt", map_location='cpu')['model'])
+state_dict = torch.load(f"{save_dir}/{model_key}.pt", map_location='cpu')['model']
+new_state_dict = {}
+for key, value in state_dict.items():
+    if key.startswith('student.backbone.'):
+        new_key = key[len('student.backbone.'):]  # Remove the 'module.backbone.' prefix
+        # blocks.x.y.norm1.weight to blocks.y.norm1.weight
+        if new_key.startswith('blocks.') and new_key[7].isdigit():
+            new_key = new_key[:7] + new_key[new_key.index('.', 7)+1:]
+        new_state_dict[new_key] = value
+    elif key.startswith('teacher.backbone.'):
+        continue # Teacher is not needed for downstream evaluation
+    elif '_head.' in key or '_loss.' in key:
+        continue # Head and loss not needed for downstream evaluation
+    else:
+        new_state_dict[key] = value  # Otherwise, keep the key as it is
+model.load_state_dict(new_state_dict)
 model.eval()
 model.requires_grad_(False)
 model.to(device)
@@ -77,10 +93,10 @@ for task in tune_data:
         label_size = len(label)
         multiclass = False
     elif isinstance(label, int):
-        labels = tuple(sorted(set([p[0][4] for p in task_tune])))
+        labels = tuple(sorted(set([p[4] for p in task_tune])))
         label_size = len(labels)
         multiclass = True
-        if label_size == 1 or max(labels) != label_size - 1 or tuple(sorted(set([p[0][4] for p in test_data[task]]))) != labels:
+        if label_size == 1 or max(labels) != label_size - 1 or tuple(sorted(set([p[4] for p in test_data[task]]))) != labels:
             continue
     else:
         continue

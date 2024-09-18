@@ -45,9 +45,8 @@ test_data = {task: test_data[task] for task in valid_tasks}
 model = vit_base(
     img_size=config.max_height,
     patch_size=config.patch_size, 
-    embed_dim=config.representation_size,
     init_values=1e-5,
-    ffn_layer="mlp",
+    ffn_layer="swiglu",
     block_chunks=0,
     qkv_bias=True,
     proj_bias=True,
@@ -55,8 +54,25 @@ model = vit_base(
     num_register_tokens=0,
     interpolate_offset=0.1,
     interpolate_antialias=False,
+    drop_path_rate=0.3,
+    drop_path_uniform=True,
 )
-model.load_state_dict(torch.load(f"{save_dir}/{model_key}.pt", map_location='cpu')['model'])
+state_dict = torch.load(f"{save_dir}/{model_key}.pt", map_location='cpu')['model']
+new_state_dict = {}
+for key, value in state_dict.items():
+    if key.startswith('student.backbone.'):
+        new_key = key[len('student.backbone.'):]  # Remove the 'module.backbone.' prefix
+        # blocks.x.y.norm1.weight to blocks.y.norm1.weight
+        if new_key.startswith('blocks.') and new_key[7].isdigit():
+            new_key = new_key[:7] + new_key[new_key.index('.', 7)+1:]
+        new_state_dict[new_key] = value
+    elif key.startswith('teacher.backbone.'):
+        continue # Teacher is not needed for downstream evaluation
+    elif '_head.' in key or '_loss.' in key:
+        continue # Head and loss not needed for downstream evaluation
+    else:
+        new_state_dict[key] = value  # Otherwise, keep the key as it is
+model.load_state_dict(new_state_dict)
 model.eval()
 model.requires_grad_(False)
 model.to(device)

@@ -29,7 +29,7 @@ class Config(object):
         dataset_size=None,
         tot_steps=100000,
         num_workers=4,
-        downstream_epochs=10,
+        downstream_epochs=50,
         downstream_batch_size=64,
         downstream_lr=1e-3,
     ):

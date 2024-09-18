@@ -6,6 +6,7 @@ dino:
   head_bottleneck_dim: 256
   head_nlayers: 3
   head_hidden_dim: 2048
+  koleo_loss_weight: 0.1
 ibot:
   loss_weight: 1.0
   separate_head: true
@@ -53,7 +54,7 @@ crops:
   global_crops_scale:
   - 0.32
   - 1.0
-  local_crops_number: 8
+  local_crops_number: 2
   local_crops_scale:
   - 0.05
   - 0.32

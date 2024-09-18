@@ -2,7 +2,6 @@ import re
 import numpy as np
 import matplotlib.pyplot as plt
 from collections import defaultdict
-from matplotlib.patches import Patch
 from matplotlib.projections.polar import PolarAxes
 from matplotlib.projections import register_projection
 
@@ -16,8 +15,8 @@ def parse_results(file_path):
         for line in file:
             line = line.strip()
             
-            # Identify model name (e.g., CLIP, DINOV2)
-            if re.match(r'^[A-Z]+\w*:$', line):
+            # Identify model name (e.g., iBOT, DINOv2)
+            if re.match(r'^[A-Za-z]+\w*:$', line):
                 current_model = line[:-1]
             
             # Identify dataset (e.g., Downstream Evaluation on Chest X-Ray)
@@ -71,7 +70,7 @@ def radar_plot(results, method_colors):
     dataset_ranges = {}
     for dataset in datasets:
         dataset_ranges[dataset] = {
-            'min': 0.5 * min(results[dataset][method] for method in methods),
+            'min': 0.5 * min([results[dataset][method] for method in methods if results[dataset][method] > 0]),
             'max': max(results[dataset][method] for method in methods)
         }
     
@@ -108,14 +107,13 @@ def radar_plot(results, method_colors):
     
 results = parse_results("results.txt")
 method_colors = {
-    'CLIP': 'red',
     'DINOv2': 'blue',
-    'RADDINO': 'green',
-    'IBOT': 'orange',
-    'MedCoSS': 'purple',
-    'BiomedCLIP': 'yellow',
-    'UniViT': 'cyan'
+    'iBOT': 'green',
+    'MedCoSS': 'orange',
+    'Swin UNETR': 'purple',
+    'UniViT': 'red'
 }
+results = {dataset: {method: results[dataset][method] if method in results[dataset] else 0.0 for method in method_colors} for dataset in results}
 ranks = {method: [] for method in method_colors}
 for dataset in results:
     ordering = sorted(results[dataset], key=lambda x: results[dataset][x], reverse=True)
@@ -123,9 +121,8 @@ for dataset in results:
         ranks[method] += [i + 1]
 for method in method_colors:
     print(f'{method}: {np.mean(ranks[method])}')
-results['Histopathology'] = {method: 0.99 for method in method_colors}
-datasets = ['Chest X-Ray (CheXpert)', 'Chest X-Ray (MIMIC)', 'Chest X-Ray (COVID-QU-Ex)', 
-            'Skin Lesion', 'BraTS-Path', 'Histopathology',
-            'CT', 'Cardiac MRI (ACDC)', 'Amyloid PET', 'MRI', 'FDG PET']
+datasets = ['CheXpert', 'MIMIC-CXR', 'COVID-QU-Ex', 
+            'ISIC', 'BraTS-Path', 'CRC-HE',
+            'DeepLesion', 'ACDC', 'ADNI MRI', 'ADNI PET']
 results = {dataset: {method: results[dataset][method] for method in method_colors} for dataset in datasets}
 radar_plot(results, method_colors)

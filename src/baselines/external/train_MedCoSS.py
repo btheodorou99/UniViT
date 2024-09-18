@@ -26,7 +26,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 2
+cuda_num = 3
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
@@ -34,6 +34,7 @@ if torch.cuda.is_available():
 NUM_CENTERS = 0.01
 DATA_PER_CENTER = 5
 DECODER_DIM = 512
+NUM_DECODER_HEADS = 16
 NUM_DECODER_LAYERS = 8
 
 data_dir = "/shared/eng/bpt3/data/UniViT/data"
@@ -50,8 +51,6 @@ model = MedCoSS(
     config.patch_size,
     config.depth_patch_size,
     config.time_patch_size,
-    config.depth_patch_size,
-    config.time_patch_size,
     config.representation_size,
     config.num_layers,
     config.num_heads,
@@ -61,6 +60,7 @@ model = MedCoSS(
     config.attention_dropout,
     config.mask_prob,
     DECODER_DIM,
+    NUM_DECODER_HEADS,
     NUM_DECODER_LAYERS,
 )
 optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr)
@@ -109,7 +109,7 @@ for m_num, modality in enumerate(modalities):
         shuffle=True,
         num_workers=config.num_workers,
     )
-    tot_steps = config.tot_epochs * len(train_data_modality) / config.batch_size
+    tot_steps = int(config.tot_epochs * len(train_data_modality) / config.batch_size)
     pbar = tqdm(
         total=tot_steps,
         leave=False,
@@ -189,6 +189,8 @@ for m_num, modality in enumerate(modalities):
         },
         f"{save_dir}/medcoss.pt",
     )
+    
+    pbar.close()
     
     modality_data = ImageDataset(train_data_modality, config, "cpu")
     modality_loader = DataLoader(

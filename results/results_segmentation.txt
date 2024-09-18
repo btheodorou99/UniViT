@@ -1,19 +1,26 @@
-DINOv2:
-    Downstream Evaluation on T1C MRI (BraTS-GLI)
-        {'Dice Coefficient': 0.4193030825402936, '95th Percentile Hausdorff Distance': 77.67860906171092}                                                                                                                                                                                                                                                                                                                                                                                                    
-    Downstream Evaluation on T1C MRI (BraTS-PED)
-        {'Dice Coefficient': 0.37250259531360314, '95th Percentile Hausdorff Distance': 40.72144048878887}
+DINOv2 2D:
+
 
 
 DINOv2 3D:
-    Downstream Evaluation on T1C MRI (BraTS-GLI)
-        {'Dice Coefficient': 0.3834592607328926, '95th Percentile Hausdorff Distance': 77.28088272802631}                                                                                                                                                    
-    Downstream Evaluation on T1C MRI (BraTS-PED)
-        {'Dice Coefficient': 0.39081480521438344, '95th Percentile Hausdorff Distance': 32.26846044223714}   
+    
+
+
+iBOT 2D:
+
+
+
+iBOT 3D:
+    
+
+
+MedCoSS:
+    
+
+
+Swin UNETR:
+
 
 
 UniViT:
-    Downstream Evaluation on T1C MRI (BraTS-GLI)
-        {'Dice Coefficient': 0.10445864762705508, '95th Percentile Hausdorff Distance': 78.07058992659648}
-    Downstream Evaluation on T1C MRI (BraTS-PED)
-        {'Dice Coefficient': 0.31128048316591617, '95th Percentile Hausdorff Distance': 33.96812669459812}
+    

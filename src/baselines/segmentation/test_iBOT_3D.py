@@ -10,11 +10,10 @@ from torchvision import transforms
 import medpy.metric.binary as metrics
 from torch.utils.data import DataLoader
 from src.models.downstream import SegmentationModel
-from src.baselines.external.medcoss.ibot import vit_base
 from src.baselines.external.ibot.models.vision_transformer import vit_base
 from src.baselines.segmentation.data.image_dataset_pretrained import ImageDataset
 
-model_key = "ibot_pretrained3D"
+model_key = "ibot"
 
 SEED = 4
 random.seed(SEED)
@@ -38,7 +37,7 @@ test_data = {
     task: [p for p in test_data[task] if p[4] is not None and isinstance(p[4], str) and os.path.exists(p[4])] for task in test_data
 }
 task_map = pickle.load(open(f"{data_dir}/taskMap.pkl", "rb"))
-valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t] if t in task_map and task_map[t] == "Segmentation" and 'T1C' in t]
+valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t] if t in task_map and task_map[t] == "Segmentation"]
 tune_data = {task: tune_data[task] for task in valid_tasks}
 test_data = {task: test_data[task] for task in valid_tasks}
 

@@ -31,10 +31,10 @@ class ImageDataset(Dataset):
             img = np.load(image_path)
             if len(img.shape) == 4:
                 img = img[:, :, :, 0]
-            img = img.permute(2, 0, 1)
+            img = img.transpose(2, 0, 1)
             tensor = []
             for i in range(img.shape[0]):
-                tensor.append(self.transform(Image.fromarray(img[i])))
+                tensor.append(self.transform(Image.fromarray(img[i]).convert("RGB"))[0])
             img = torch.stack(tensor)
             img = img.unsqueeze(0)  # Only 1 channel
             if self.image_depth is not None:

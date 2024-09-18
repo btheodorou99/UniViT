@@ -71,7 +71,7 @@ transform = transforms.Compose([
 
 allResults = {}
 for task in tune_data:
-    if task not in task_map or task_map[task] not in ["Multi-Class Classification", "Multi-Label Classification"]:
+    if task not in task_map or task_map[task] not in ["Multi-Label Classification", "Multi-Class Classification"]:
         continue
     
     task_tune = tune_data[task]
@@ -80,10 +80,10 @@ for task in tune_data:
         label_size = len(label)
         multiclass = False
     elif isinstance(label, int):
-        labels = tuple(sorted(set([p[0][4] for p in task_tune])))
+        labels = tuple(sorted(set([p[4] for p in task_tune])))
         label_size = len(labels)
         multiclass = True
-        if label_size == 1 or max(labels) != label_size - 1 or tuple(sorted(set([p[0][4] for p in test_data[task]]))) != labels:
+        if label_size == 1 or max(labels) != label_size - 1 or tuple(sorted(set([p[4] for p in test_data[task]]))) != labels:
             continue
     else:
         continue

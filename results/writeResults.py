@@ -11,7 +11,7 @@ def parse_results(file_path):
             line = line.strip()
             
             # Identify model name (e.g., CLIP, DINOV2)
-            if re.match(r'^[A-Z]+\w*:$', line):
+            if re.match(r'^[a-zA-Z]+\w*:$', line):
                 current_model = line[:-1]
             
             # Identify dataset (e.g., Downstream Evaluation on Chest X-Ray)
@@ -30,7 +30,10 @@ def parse_results(file_path):
 
 def generate_latex_table(results):
     # Extract all datasets for columns
-    datasets = sorted({dataset for model_data in results.values() for dataset in model_data.keys()})
+    datasets = ['CheXpert', 'MIMIC-CXR', 
+            'BraTS-Path', 'CRC-HE',
+            'DeepLesion', 'ADNI PET',
+            'COVID-QU-Ex', 'ISIC', 'ADNI MRI', 'ACDC']
     
     # Start LaTeX table
     latex_table = "\\begin{tabular}{l" + "c" * len(datasets) + "}\n"

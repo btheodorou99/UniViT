@@ -6,7 +6,6 @@ from torchvision.ops import MLP
 from functools import partial
 from collections import OrderedDict
 from torch.nn.modules.utils import _quadruple
-from timm.models.vision_transformer import Block
 from typing import Callable, Optional, Tuple, Union
 
 class Conv4d(nn.Module):
@@ -293,6 +292,7 @@ class MedCoSS(nn.Module):
         attention_dropout: float = 0.0,
         mask_prob: float = 0.15,
         decoder_dim: int = 512,
+        num_decoder_heads: int = 16,
         num_decoder_layers: int = 8,
         norm_layer: Callable[..., torch.nn.Module] = partial(nn.LayerNorm, eps=1e-6),
     ):
@@ -372,29 +372,28 @@ class MedCoSS(nn.Module):
             
         self.decoder_embed = nn.Linear(representation_size, decoder_dim)
         self.decoder_masked_embed = nn.Parameter(torch.zeros(1, 1, decoder_dim))
-        self.decoder_pos_embed_all = nn.Parameter(torch.zeros(1, self.seq_len, decoder_dim))
-        self.decoder_pos_embed_noTime = nn.Parameter(torch.zeros(1, self.seq_len, decoder_dim))
-        self.decoder_pos_embed_no3D = nn.Parameter(torch.zeros(1, self.seq_len, decoder_dim))
-        self.decoder_pos_embed_noTimeNo3D = nn.Parameter(torch.zeros(1, self.seq_len, decoder_dim))
-        self.decoder = nn.ModuleList([
-            Block(
-                d_model = decoder_dim, 
-                nhead = num_heads, 
-                dim_feedforward = mlp_dim, 
-                dropout=attention_dropout, 
-                activation='gelu',
-                batch_first=True
-            )
-            for i in range(num_decoder_layers)])
-        self.decoder_pred_all = nn.Linear(decoder_dim, patch_size ** 4 * 3, bias=True)
-        self.decoder_pred_noTime = nn.Linear(decoder_dim, patch_size ** 3 * 3, bias=True)
-        self.decoder_pred_no3D = nn.Linear(decoder_dim, patch_size ** 3 * 3, bias=True)
-        self.decoder_pred_noTimeNo3D = nn.Linear(decoder_dim, patch_size ** 2 * 3, bias=True)
+        self.decoder_pos_embed_all = nn.Parameter(torch.zeros(1, self.seq_length_all, decoder_dim))
+        self.decoder_pos_embed_noTime = nn.Parameter(torch.zeros(1, self.seq_length_noTime, decoder_dim))
+        self.decoder_pos_embed_no3D = nn.Parameter(torch.zeros(1, self.seq_length_no3D, decoder_dim))
+        self.decoder_pos_embed_noTimeNo3D = nn.Parameter(torch.zeros(1, self.seq_length_noTimeNo3D, decoder_dim))
+        self.decoder = Encoder(
+            num_decoder_layers,
+            num_decoder_heads,
+            decoder_dim,
+            mlp_dim,
+            dropout,
+            attention_dropout,
+            norm_layer,
+        )
+        self.decoder_pred_all = nn.Linear(decoder_dim, time_patch_size * depth_patch_size * patch_size * patch_size * num_channels, bias=True)
+        self.decoder_pred_noTime = nn.Linear(decoder_dim, depth_patch_size * patch_size * patch_size * num_channels, bias=True)
+        self.decoder_pred_no3D = nn.Linear(decoder_dim, time_patch_size * patch_size * patch_size * num_channels, bias=True)
+        self.decoder_pred_noTimeNo3D = nn.Linear(decoder_dim, patch_size * patch_size * num_channels, bias=True)
         self.normalize_mim = False
         
 
 
-    def _process_input(self, x: torch.Tensor, dimensions: torch.Tensor) -> torch.Tensor:
+    def _process_input(self, x: torch.Tensor, dimensions: torch.Tensor, seqMask=False, currMask=None):
         b, t, s, c, h, w = x.shape
         p = self.patch_size
         p_d = self.depth_patch_size
@@ -417,34 +416,33 @@ class MedCoSS(nn.Module):
         mask_noTime = (dimensions[:, 0] == 1) & (dimensions[:, 1] > 1)
         mask_no3D = (dimensions[:, 0] > 1) & (dimensions[:, 1] == 1)
         mask_noTimeNo3D = (dimensions[:, 0] == 1) & (dimensions[:, 1] == 1)
-        
         if mask_all.any():
             b_all = mask_all.sum()
             x_all = x[mask_all]
-            patchified_all = self.patchify_all(x_all).reshape(-1, self.representation_size, n_h * n_w)
-            x_out[mask_all, :, self.seq_length_all] = patchified_all
-            mask_out_all = torch.zeros((b_all, p_t, p_d, n_h, n_w), dtype=torch.bool, device=x.device)
+            patchified_all = self.patchify_all(x_all).reshape(-1, self.representation_size, n_t * n_d * n_h * n_w)
+            x_out[mask_all, :, :self.seq_length_all] = patchified_all
+            mask_out_all = torch.zeros((b_all, n_t, n_d, n_h, n_w), dtype=torch.bool, device=x.device)
             dim_all = dimensions[mask_all]
             for i in range(b_all):
                 mask_out_all[i, math.ceil(dim_all[i, 0] / self.time_patch_size) :, :, :, :] = True
                 mask_out_all[i, :, math.ceil(dim_all[i, 1] / self.depth_patch_size) :, :, :] = True
                 mask_out_all[i, :, :, math.ceil(dim_all[i, 2] / self.patch_size) :, :] = True
                 mask_out_all[i, :, :, :, math.ceil(dim_all[i, 3] / self.patch_size) :] = True
-            mask_out_all = mask_all.reshape(b_all, self.seq_length_all)
+            mask_out_all = mask_out_all.reshape(b_all, self.seq_length_all)
             mask_out[mask_all, :self.seq_length_all] = mask_out_all
             mask_out[mask_all, self.seq_length_all:] = True
 
         if mask_noTime.any():
             b_noTime = mask_noTime.sum()
             x_noTime = x[mask_noTime][:,:,0,:]
-            patchified_noTime = self.patchify_noTime(x_noTime).reshape(-1, self.representation_size, n_h * n_w)
-            x_out[mask_noTime, :, self.seq_length_noTime:] = patchified_noTime
-            mask_out_noTime = torch.zeros((b_noTime, p_d, n_h, n_w), dtype=torch.bool, device=x.device)
+            patchified_noTime = self.patchify_noTime(x_noTime).reshape(-1, self.representation_size, n_d * n_h * n_w)
+            x_out[mask_noTime, :, :self.seq_length_noTime] = patchified_noTime
+            mask_out_noTime = torch.zeros((b_noTime, n_d, n_h, n_w), dtype=torch.bool, device=x.device)
             dim_noTime = dimensions[mask_noTime]
             for i in range(b_noTime):
                 mask_out_noTime[i, math.ceil(dim_noTime[i, 1] / self.depth_patch_size) :, :, :] = True
-                mask_out_noTime[i, :, math.ceil(dim_no3D[i, 2] / self.patch_size) :, :] = True
-                mask_out_noTime[i, :, :, math.ceil(dim_no3D[i, 3] / self.patch_size) :] = True
+                mask_out_noTime[i, :, math.ceil(dim_noTime[i, 2] / self.patch_size) :, :] = True
+                mask_out_noTime[i, :, :, math.ceil(dim_noTime[i, 3] / self.patch_size) :] = True
             mask_out_noTime = mask_out_noTime.reshape(b_noTime, self.seq_length_noTime)
             mask_out[mask_noTime, :self.seq_length_noTime] = mask_out_noTime
             mask_out[mask_noTime, self.seq_length_noTime:] = True
@@ -452,9 +450,9 @@ class MedCoSS(nn.Module):
         if mask_no3D.any():
             b_no3D = mask_no3D.sum()
             x_no3D = x[mask_no3D][:,:,:,0]
-            patchified_no3D = self.patchify_no3D(x_no3D).reshape(-1, self.representation_size, n_h * n_w)
-            x_out[mask_no3D, :, self.seq_length_no3D:] = patchified_no3D
-            mask_out_no3D = torch.zeros((b_no3D, p_t, n_h, n_w), dtype=torch.bool, device=x.device)
+            patchified_no3D = self.patchify_no3D(x_no3D).reshape(-1, self.representation_size, n_t * n_h * n_w)
+            x_out[mask_no3D, :, :self.seq_length_no3D] = patchified_no3D
+            mask_out_no3D = torch.zeros((b_no3D, n_t, n_h, n_w), dtype=torch.bool, device=x.device)
             dim_no3D = dimensions[mask_no3D]
             for i in range(b_no3D):
                 mask_out_no3D[i, math.ceil(dim_no3D[i, 0] / self.time_patch_size) :, :, :] = True
@@ -468,14 +466,14 @@ class MedCoSS(nn.Module):
             b_noTimeNo3D = mask_noTimeNo3D.sum()
             x_noTimeNo3D = x[mask_noTimeNo3D][:,:,0,0]
             patchified_noTimeNo3D = self.patchify_noTimeNo3D(x_noTimeNo3D).reshape(-1, self.representation_size, n_h * n_w)
-            x_out[mask_noTimeNo3D, :, self.seq_length_noTimeNo3D:] = patchified_noTimeNo3D
-            mask_noTimeNo3D = torch.zeros((b_noTimeNo3D, n_h, n_w), dtype=torch.bool, device=x.device)
+            x_out[mask_noTimeNo3D, :, :self.seq_length_noTimeNo3D] = patchified_noTimeNo3D
+            mask_out_noTimeNo3D = torch.zeros((b_noTimeNo3D, n_h, n_w), dtype=torch.bool, device=x.device)
             dim_noTimeNo3D = dimensions[mask_noTimeNo3D]
             for i in range(b_noTimeNo3D):
-                mask_noTimeNo3D[i, math.ceil(dim_noTimeNo3D[i, 2] / self.patch_size) :, :] = True
-                mask_noTimeNo3D[i, :, math.ceil(dim_noTimeNo3D[i, 3] / self.patch_size) :] = True
-            mask_noTimeNo3D = mask_noTimeNo3D.reshape(b_noTimeNo3D, self.seq_length_noTimeNo3D)
-            mask_out[mask_noTimeNo3D, :self.seq_length_noTimeNo3D] = mask_noTimeNo3D
+                mask_out_noTimeNo3D[i, math.ceil(dim_noTimeNo3D[i, 2] / self.patch_size) :, :] = True
+                mask_out_noTimeNo3D[i, :, math.ceil(dim_noTimeNo3D[i, 3] / self.patch_size) :] = True
+            mask_out_noTimeNo3D = mask_out_noTimeNo3D.reshape(b_noTimeNo3D, self.seq_length_noTimeNo3D)
+            mask_out[mask_noTimeNo3D, :self.seq_length_noTimeNo3D] = mask_out_noTimeNo3D
             mask_out[mask_noTimeNo3D, self.seq_length_noTimeNo3D:] = True
 
         # (n, representation_size, (seq_len)) -> (n, (seq_len), representation_size)
@@ -483,6 +481,14 @@ class MedCoSS(nn.Module):
         # where S is the source sequence length, N is the batch size, E is the
         # embedding dimension
         x_out = x_out.permute(0, 2, 1)
+        
+        # Optionally Mask
+        if seqMask:
+            if currMask is not None:
+                patch_mask = currMask
+            else:
+                patch_mask = self._mask_sequence(x_out)
+            x_out = (patch_mask.float().unsqueeze(-1) * self.masked_embed) + ((~patch_mask.unsqueeze(-1)).float() * x_out)
         
         # Add positional embeddings
         pos_indices_all = torch.arange(self.seq_length_all, device=x.device)
@@ -493,13 +499,16 @@ class MedCoSS(nn.Module):
         pos_emb_noTime = self.pos_embedding_noTime(pos_indices_noTime)
         pos_emb_no3D = self.pos_embedding_no3D(pos_indices_no3D)
         pos_emb_noTimeNo3D = self.pos_embedding_noTimeNo3D(pos_indices_noTimeNo3D)
-        
-        x[mask_all, :self.seq_length_all] = x[mask_all, :self.seq_length_all] + pos_emb_all
-        x[mask_noTime, :self.seq_length_noTime] = x[mask_noTime, :self.seq_length_noTime] + pos_emb_noTime
-        x[mask_no3D, :self.seq_length_no3D] = x[mask_no3D, :self.seq_length_no3D] + pos_emb_no3D
-        x[mask_noTimeNo3D, :self.seq_length_noTimeNo3D] = x[mask_noTimeNo3D, :self.seq_length_noTimeNo3D] + pos_emb_noTimeNo3D
 
-        return x_out, mask_out
+        x_out[mask_all, :self.seq_length_all] = x_out[mask_all, :self.seq_length_all] + pos_emb_all
+        x_out[mask_noTime, :self.seq_length_noTime] = x_out[mask_noTime, :self.seq_length_noTime] + pos_emb_noTime
+        x_out[mask_no3D, :self.seq_length_no3D] = x_out[mask_no3D, :self.seq_length_no3D] + pos_emb_no3D
+        x_out[mask_noTimeNo3D, :self.seq_length_noTimeNo3D] = x_out[mask_noTimeNo3D, :self.seq_length_noTimeNo3D] + pos_emb_noTimeNo3D
+
+        if seqMask:
+            return x_out, mask_out, patch_mask
+        else:
+            return x_out, mask_out
     
     def _mask_sequence(self, x: torch.Tensor) -> torch.Tensor:
         bs, seq_len, _ = x.shape
@@ -512,29 +521,29 @@ class MedCoSS(nn.Module):
     def _basic_patchify(self, img, imgType):
         b, t, s, c, h, w = img.shape
         img = img.permute(0, 3, 1, 2, 4, 5)
-        time_patches = 1
-        depth_patches = 1
+        time_patches = t // self.time_patch_size
+        depth_patches = s // self.depth_patch_size
         height_patches = h // self.patch_size
         width_patches = w // self.patch_size
         if imgType == 1: # ALL
-            img = img.reshape(b, c, time_patches, self.image_time, depth_patches, self.image_depth, height_patches, self.patch_size, width_patches, self.patch_size)
+            img = img.reshape(b, c, time_patches, self.time_patch_size, depth_patches, self.depth_patch_size, height_patches, self.patch_size, width_patches, self.patch_size)
             img = torch.einsum('nctjdkhpwq->ntdhwjkpqc', img)
-            img = img.reshape(b, time_patches * depth_patches * height_patches * width_patches, self.image_time * self.image_depth * self.patch_size * self.patch_size * c)
+            img = img.reshape(b, time_patches * depth_patches * height_patches * width_patches, self.time_patch_size * self.depth_patch_size * self.patch_size * self.patch_size * c)
             return img
         elif imgType == 2: # NO TIME
-            img = img[:,:,:,0,:]
-            img = img.reshape(b, c, depth_patches, self.image_depth, height_patches, self.patch_size, width_patches, self.patch_size)
+            img = img[:,:,0,:,:,:]
+            img = img.reshape(b, c, depth_patches, self.depth_patch_size, height_patches, self.patch_size, width_patches, self.patch_size)
             img = torch.einsum('ncdkhpwq->ndhwkpqc', img)            
-            img = img.reshape(b, depth_patches * height_patches * width_patches, self.image_depth * self.patch_size * self.patch_size * c)
+            img = img.reshape(b, depth_patches * height_patches * width_patches, self.depth_patch_size * self.patch_size * self.patch_size * c)
             return img
         elif imgType == 3: # NO 3D
-            img = img[:,:,:,:,0]
-            img = img.reshape(b, c, time_patches, self.image_time, height_patches, self.patch_size, width_patches, self.patch_size)
+            img = img[:,:,:,0,:,:]
+            img = img.reshape(b, c, time_patches, self.time_patch_size, height_patches, self.patch_size, width_patches, self.patch_size)
             img = torch.einsum('nctkhpwq->nthwkpqc', img)
-            img = img.reshape(b, time_patches * height_patches * width_patches, self.image_time * self.patch_size * self.patch_size * c)
+            img = img.reshape(b, time_patches * height_patches * width_patches, self.time_patch_size * self.patch_size * self.patch_size * c)
             return img
         else:
-            img = img[:,:,:,0,0] # NO TIME NO 3D
+            img = img[:,:,0,0,:,:] # NO TIME NO 3D
             img = img.reshape(b, c, height_patches, self.patch_size, width_patches, self.patch_size)
             img = torch.einsum('nchpwq->nhwpqc', img)
             img = img.reshape(b, height_patches * width_patches, self.patch_size * self.patch_size * c)
@@ -551,65 +560,57 @@ class MedCoSS(nn.Module):
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
     
-    def _decoder_forward(self, x: torch.Tensor, img: torch.Tensor, dimensions: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    def _decoder_forward(self, x: torch.Tensor, img: torch.Tensor, dimensions: torch.Tensor, mask: torch.Tensor, encoder_mask: torch.Tensor) -> torch.Tensor:
         x = self.decoder_embed(x)
-        x[:, 1:] = (mask.float().unsqueeze(-1) * self.decoder_masked_embed) + ((~mask.unsqueeze(-1)).float() * x)
+        x[:, 1:] = (mask.float().unsqueeze(-1) * self.decoder_masked_embed) + ((~mask.unsqueeze(-1)).float() * x[:, 1:])
         mask_all = (dimensions[:, 0] > 1) & (dimensions[:, 1] > 1)
         mask_noTime = (dimensions[:, 0] == 1) & (dimensions[:, 1] > 1)
         mask_no3D = (dimensions[:, 0] > 1) & (dimensions[:, 1] == 1)
         mask_noTimeNo3D = (dimensions[:, 0] == 1) & (dimensions[:, 1] == 1) 
         
         if mask_all.any():
-            x_all = x[mask_all]
-            x_all = x_all + self.decoder_pos_embed_all
-            x[mask_all] = x_all
+            x[mask_all, 1:1+self.seq_length_all] + x[mask_all, 1:1+self.seq_length_all] + self.decoder_pos_embed_all
 
         if mask_noTime.any():
-            x_noTime = x[mask_noTime]
-            x_noTime = x_noTime + self.decoder_pos_embed_noTime
-            x[mask_noTime] = x_noTime
+            x[mask_noTime, 1:1+self.seq_length_noTime] + x[mask_noTime, 1:1+self.seq_length_noTime] + self.decoder_pos_embed_noTime
 
         if mask_no3D.any():
-            x_no3D = x[mask_no3D]
-            x_no3D = x_no3D + self.decoder_pos_embed_no3D
-            x[mask_no3D] = x_no3D
+            x[mask_no3D, 1:1+self.seq_length_no3D] + x[mask_no3D, 1:1+self.seq_length_no3D] + self.decoder_pos_embed_no3D
 
         if mask_noTimeNo3D.any():
-            x_noTimeNo3D = x[mask_noTimeNo3D]
-            x_noTimeNo3D = x_noTimeNo3D + self.decoder_pos_embed_noTimeNo3D
-            x[mask_noTimeNo3D] = x_noTimeNo3D
+            x[mask_noTimeNo3D, 1:1+self.seq_length_noTimeNo3D] + x[mask_noTimeNo3D, 1:1+self.seq_length_noTimeNo3D] + self.decoder_pos_embed_noTimeNo3D
         
-        x = self.decoder(x)
-        x[:, 1:]
+        x = self.decoder(x, encoder_mask)
+        x = x[:, 1:]
         
         if mask_all.any():
-            mim_mask_all = mask[mask_all]
+            mim_mask_all = mask[mask_all, :self.seq_length_all]
             target_all = self._basic_patchify(img[mask_all], imgType=1)
-            pred_all = self.decoder_pred_all(x[mask_all])
+            pred_all = self.decoder_pred_all(x[mask_all, :self.seq_length_all])
             loss_all = self._mim_loss(pred_all, target_all, mim_mask_all)
         else:
             loss_all = 0
             
         if mask_noTime.any():
-            mim_mask_noTime = mask[mask_noTime]
+            mim_mask_noTime = mask[mask_noTime, :self.seq_length_noTime]
             target_noTime = self._basic_patchify(img[mask_noTime], imgType=2)
-            pred_noTime = self.decoder_pred_noTime(x[mask_noTime])
+            pred_noTime = self.decoder_pred_noTime(x[mask_noTime, :self.seq_length_noTime])
             loss_noTime = self._mim_loss(pred_noTime, target_noTime, mim_mask_noTime)
         else:
             loss_noTime = 0
             
         if mask_no3D.any():
-            mim_mask_no3D = mask[mask_no3D]
+            mim_mask_no3D = mask[mask_no3D, :self.seq_length_no3D]
             target_no3D = self._basic_patchify(img[mask_no3D], imgType=3)
-            pred_no3D = self.decoder_pred_no3D(x[mask_no3D])
+            pred_no3D = self.decoder_pred_no3D(x[mask_no3D, :self.seq_length_no3D])
             loss_no3D = self._mim_loss(pred_no3D, target_no3D, mim_mask_no3D)
         else:
             loss_no3D = 0
             
         if mask_noTimeNo3D.any():
-            mim_mask_noTimeNo3D = mask[mask_noTimeNo3D]
+            mim_mask_noTimeNo3D = mask[mask_noTimeNo3D, :self.seq_length_noTimeNo3D]
             target_noTimeNo3D = self._basic_patchify(img[mask_noTimeNo3D], imgType=4)
-            pred_noTimeNo3D = self.decoder_pred_noTimeNo3D(x[mask_noTimeNo3D])
+            pred_noTimeNo3D = self.decoder_pred_noTimeNo3D(x[mask_noTimeNo3D, :self.seq_length_noTimeNo3D])
             loss_noTimeNo3D = self._mim_loss(pred_noTimeNo3D, target_noTimeNo3D, mim_mask_noTimeNo3D)
         else:
             loss_noTimeNo3D = 0
@@ -619,17 +620,8 @@ class MedCoSS(nn.Module):
     
     def forward(self, img: torch.Tensor, dimensions: torch.Tensor, seqMask: bool = False, currMask: torch.Tensor = None, train: bool = False, buffer: bool = False):
         # Reshape and permute the input tensor
-        x, orig_mask = self._process_input(img, dimensions)
-        bs, seq_len, _ = x.shape
-        if seqMask:
-            if currMask is not None:
-                mask = currMask
-            else:
-                mask = self._mask_sequence(x)
-        else:
-            mask = torch.zeros((bs, seq_len), dtype=torch.bool, device=x.device)
-
-        x = (mask.float().unsqueeze(-1) * self.masked_embed) + ((~mask.unsqueeze(-1)).float() * x)
+        x, orig_mask, mask = self._process_input(img, dimensions, seqMask, currMask)
+        bs, _, _ = x.shape
 
         # Expand the class token to the full batch
         batch_class_token = self.class_token.expand(bs, -1, -1)
@@ -643,7 +635,7 @@ class MedCoSS(nn.Module):
             if buffer:
                 return x, mask
             
-            loss = self._decoder_forward(x, img, dimensions, mask & ~orig_mask)
+            loss = self._decoder_forward(x, img, dimensions, mask, encoder_mask)
             return loss
         
         return x

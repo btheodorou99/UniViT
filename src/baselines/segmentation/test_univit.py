@@ -14,20 +14,20 @@ from src.baselines.segmentation.data.image_dataset import ImageDataset
 
 model_key = "univit"
 
-SEED = 4
+SEED = 7
 random.seed(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 1
+cuda_num = 0
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
 
 data_dir = "/shared/eng/bpt3/data/UniViT/data"
 save_dir = "/shared/eng/bpt3/data/UniViT/save"
-# tune_data = pickle.load(open(f"{data_dir}/tuningDataset.pkl", "rb"))
+tune_data = pickle.load(open(f"{data_dir}/tuningDataset.pkl", "rb"))
 tune_data = {
     task: [[p] for p in tune_data[task] if p[4] is not None and isinstance(p[4], str) and os.path.exists(p[4])] for task in tune_data
 }
@@ -36,7 +36,7 @@ test_data = {
     task: [[p] for p in test_data[task] if p[4] is not None and isinstance(p[4], str) and os.path.exists(p[4])] for task in test_data
 }
 task_map = pickle.load(open(f"{data_dir}/taskMap.pkl", "rb"))
-valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t] if t in task_map and task_map[t] == "Segmentation" and 'T1C' in t]
+valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t] if t in task_map and task_map[t] == "Segmentation"]
 tune_data = {task: tune_data[task] for task in valid_tasks}
 test_data = {task: test_data[task] for task in valid_tasks}
 
@@ -97,7 +97,7 @@ for task in valid_tasks:
         dice_loss = 1 - dice_score.mean()
         return dice_loss
 
-    downstream = SegmentationModel(config.representation_size, config.patch_size, config.max_depth).to(device)
+    downstream = SegmentationModel(config.representation_size, config.patch_size, config.max_depth, slice_factor=config.max_depth // config.depth_patch_size).to(device)
     optimizer = torch.optim.Adam(downstream.parameters(), lr=config.downstream_lr)
     for epoch in tqdm(
         range(config.downstream_epochs), leave=False, desc=f"{task} Tuning"
