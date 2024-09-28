@@ -29,9 +29,11 @@ class Config(object):
         dataset_size=None,
         tot_steps=100000,
         num_workers=4,
-        downstream_epochs=50,
-        downstream_batch_size=64,
-        downstream_lr=1e-3,
+        downstream_epochs=100,
+        downstream_batch_size=32,
+        segmentation_batch_size=4,
+        downstream_lr=1e-4,
+        downstream_folds=10,
     ):
         self.max_height = max_height
         self.max_width = max_width
@@ -62,7 +64,9 @@ class Config(object):
         self.num_workers = num_workers
         self.downstream_epochs = downstream_epochs
         self.downstream_batch_size = downstream_batch_size
+        self.segmentation_batch_size = segmentation_batch_size
         self.downstream_lr = downstream_lr
+        self.downstream_folds = downstream_folds
 
     def dataset_to_steps(self, dataset_size):
         self.tot_steps = self.tot_epochs * dataset_size // self.batch_size

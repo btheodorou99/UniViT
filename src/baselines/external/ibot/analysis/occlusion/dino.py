@@ -411,7 +411,7 @@ def dino_small(patch_size=16, pretrained=False, **kwargs):
     }
     if pretrained:
         state_dict = torch.hub.load_state_dict_from_url(model_url[patch_size])
-        msg = model.load_state_dict(state_dict, strict=False)
+        msg = model.load_state_dict(state_dict)
         print(msg)
         print("=> loaded checkpoint '{}'".format(model_url[patch_size]))
 

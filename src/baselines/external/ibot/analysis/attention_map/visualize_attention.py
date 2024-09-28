@@ -176,7 +176,7 @@ if __name__ == '__main__':
         state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
         # remove `backbone.` prefix induced by multicrop wrapper
         state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
-        msg = model.load_state_dict(state_dict, strict=False)
+        msg = model.load_state_dict(state_dict)
         print('Pretrained weights found at {} and loaded with msg: {}'.format(args.pretrained_weights, msg))
     else:
         print("Please use the `--pretrained_weights` argument to indicate the path of the checkpoint to evaluate.")

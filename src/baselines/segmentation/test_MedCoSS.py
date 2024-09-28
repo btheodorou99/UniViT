@@ -60,7 +60,7 @@ model = MedCoSS(
 ).to(device)
 print("Loading previous model")
 model.load_state_dict(
-    torch.load(f"{save_dir}/{model_key}.pt", map_location="cpu")["model"], strict=False
+    torch.load(f"{save_dir}/{model_key}.pt", map_location="cpu")["model"]
 )
 model.eval()
 model.requires_grad_(False)

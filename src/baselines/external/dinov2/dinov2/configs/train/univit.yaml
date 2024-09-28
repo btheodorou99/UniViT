@@ -47,7 +47,7 @@ optim:
   freeze_last_layer_epochs: 1
   scaling_rule: single_node
   patch_embed_lr_mult: 0.2
-  layerwise_decay: 1.0
+  layerwise_decay: 0.9
   adamw_beta1: 0.9
   adamw_beta2: 0.999
 crops:

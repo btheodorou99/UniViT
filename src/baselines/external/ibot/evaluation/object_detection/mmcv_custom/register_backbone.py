@@ -141,7 +141,7 @@ class VisionTransformer(VisionTransformer):
             self.apply(self._init_weights)
             logger = get_root_logger()
             if  os.path.isfile(pretrained):
-                load_checkpoint(self, pretrained, strict=False, logger=logger)
+                load_checkpoint(self, pretrained, logger=logger)
             else:
                 logger.info(f"checkpoint path {pretrained} is invalid, we skip it and initialize net randomly")
         elif pretrained is None:

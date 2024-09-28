@@ -503,7 +503,7 @@ class TIMMVisionTransformer(BaseModule):
     def init_weights(self, pretrained=None):
         if isinstance(pretrained, str):
             logger = get_root_logger()
-            load_checkpoint(self, pretrained, map_location="cpu", strict=False, logger=logger)
+            load_checkpoint(self, pretrained, map_location="cpu", logger=logger)
 
     def forward_features(self, x):
         x, H, W = self.patch_embed(x)

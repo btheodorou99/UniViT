@@ -69,7 +69,7 @@ def main():
         state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
         # remove `backbone.` prefix induced by multicrop wrapper
         state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
-        msg = network.load_state_dict(state_dict, strict=False)
+        msg = network.load_state_dict(state_dict)
         print('Pretrained weights found at {} and loaded with msg: {}'.format(args.pretrained_weights, msg))
 
     if args.sample_type == 'class':

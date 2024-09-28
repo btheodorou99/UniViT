@@ -48,7 +48,7 @@ def _get_mmcv_home():
     return mmcv_home
 
 
-def load_state_dict(module, state_dict, strict=False, logger=None):
+def load_state_dict(module, state_dict, logger=None):
     """Load state_dict to a module.
 
     This method is modified from :meth:`torch.nn.Module.load_state_dict`.

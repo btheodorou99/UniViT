@@ -49,6 +49,7 @@ class ImageDataset(Dataset):
             if len(img.shape) == 4:
                 img = img[:, :, :, 0]
             img = img[:, :, img.shape[2] // 2]  # Take middle depth for 3D images
+            img = (img * 255).astype(np.uint8)
             img = Image.fromarray(img).convert("RGB")
         elif (
             image_path.endswith(".jpg")

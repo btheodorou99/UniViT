@@ -45,7 +45,7 @@ class SSLMetaArch(nn.Module):
         if cfg.student.pretrained_weights:
             chkpt = torch.load(cfg.student.pretrained_weights)
             logger.info(f"OPTIONS -- pretrained weights: loading from {cfg.student.pretrained_weights}")
-            student_backbone.load_state_dict(chkpt["model"], strict=False)
+            student_backbone.load_state_dict(chkpt["model"])
 
         self.embed_dim = embed_dim
         self.dino_out_dim = cfg.dino.head_n_prototypes
@@ -347,7 +347,10 @@ class SSLMetaArch(nn.Module):
                 loss_accumulator += self.ibot_loss_weight * ibot_patch_loss
                 loss_dict["ibot_loss"] = ibot_patch_loss / 2
 
-        self.backprop_loss(loss_accumulator)
+        if not isinstance(loss_accumulator, torch.Tensor):
+            logger.warning("Loss is not a tensor (all NaN's)")
+        else:
+            self.backprop_loss(loss_accumulator)
 
         self.fsdp_synchronize_streams()
 

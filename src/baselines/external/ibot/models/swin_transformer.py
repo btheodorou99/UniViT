@@ -797,7 +797,7 @@ class SwinTransformer(nn.Module):
                                 v = absolute_pos_embed_pretrained_resized.permute(0, 2, 3, 1).flatten(1, 2)
 
                     need_init_state_dict[k] = v
-            self.load_state_dict(need_init_state_dict, strict=False)
+            self.load_state_dict(need_init_state_dict)
 
     def freeze_pretrained_layers(self, frozen_layers=[]):
         for name, module in self.named_modules():

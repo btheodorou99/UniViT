@@ -2,6 +2,7 @@ import torch
 import random
 import pickle
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
 from sklearn import metrics
 from src.config import Config
@@ -39,6 +40,23 @@ valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t]]
 tune_data = {task: tune_data[task] for task in valid_tasks}
 test_data = {task: test_data[task] for task in valid_tasks}
 
+cci_map = pd.read_csv(f"{data_dir}/CCI.csv")
+cci_map = {row['PTID']: sum(row[f'CCI{i}'] for i in range(1,21)) for _, row in cci_map.iterrows()}
+cci_values = [v for v in cci_map.values() if v == v]
+cci_threshold = np.percentile(cci_values, 75)
+cci_map = {k: 1 if v > cci_threshold else 0 for k, v in cci_map.items()}
+
+temporal_tasks = ['ADNI PET CCI', 'ACDC Abnormality', 'MIMIC-CXR Pneumothorax']
+tune_data['ADNI PET CCI'] = [[(v[0], v[1], v[2], v[3], cci_map[v[0].split('/')[-1].split('--')[0]]) for v in p] for p in tune_data['ADNI PET'] if p[0][0].split('/')[-1].split('--')[0] in cci_map]
+test_data['ADNI PET CCI'] = [[(v[0], v[1], v[2], v[3], cci_map[v[0].split('/')[-1].split('--')[0]]) for v in p] for p in test_data['ADNI PET'] if p[0][0].split('/')[-1].split('--')[0] in cci_map]
+task_map['ADNI PET CCI'] = 'Multi-Class Classification'
+tune_data['ACDC Abnormality'] = [[(v[0], v[1], v[2], v[3], 1 if v[4] > 0 else 0) for v in p] for p in tune_data['ACDC']]
+test_data['ACDC Abnormality'] = [[(v[0], v[1], v[2], v[3], 1 if v[4] > 0 else 0) for v in p] for p in test_data['ACDC']]
+task_map['ACDC Abnormality'] = 'Multi-Class Classification'
+tune_data['MIMIC-CXR Pneumothorax'] = [[(v[0], v[1], v[2], v[3], v[4][5]) for v in p] for p in tune_data['MIMIC-CXR']]
+test_data['MIMIC-CXR Pneumothorax'] = [[(v[0], v[1], v[2], v[3], v[4][5]) for v in p] for p in test_data['MIMIC-CXR']]
+task_map['MIMIC-CXR Pneumothorax'] = 'Multi-Class Classification'
+
 model = MedCoSS(
     config.max_height,
     config.max_width,
@@ -59,17 +77,19 @@ model = MedCoSS(
 ).to(device)
 print("Loading previous model")
 model.load_state_dict(
-    torch.load(f"{save_dir}/{model_key}.pt", map_location="cpu")["model"], strict=False
+    torch.load(f"{save_dir}/{model_key}.pt", map_location="cpu")["model"]
 )
 model.eval()
 model.requires_grad_(False)
 
 allResults = {}
-for task in tune_data:
+for task in temporal_tasks:
     if task not in task_map or task_map[task] not in ["Multi-Class Classification", "Multi-Label Classification"]:
         continue
     
     task_tune = tune_data[task]
+    task_test = test_data[task]
+    task_data = task_tune + task_test
     label = task_tune[0][0][4]
     if isinstance(label, list):
         label_size = len(label)
@@ -84,103 +104,68 @@ for task in tune_data:
         continue
         
     print(f'Downstream Evaluation on {task}')
-    task_tune_data = ImageDataset(task_tune, config, "cpu", multiclass=multiclass)
-    task_tune_loader = DataLoader(
-        task_tune_data,
+    task_data = ImageDataset(
+        task_data, config, "cpu", multiclass=multiclass
+    )
+    task_loader = DataLoader(
+        task_data,
         batch_size=config.downstream_batch_size,
         shuffle=True,
         num_workers=config.num_workers,
     )
-    task_test = test_data[task]
-    task_test_data = ImageDataset(task_test, config, "cpu", multiclass=multiclass)
-    task_test_loader = DataLoader(
-        task_test_data,
-        batch_size=config.downstream_batch_size,
-        shuffle=False,
-        num_workers=config.num_workers,
-    )
 
     taskType = task_map[task]
-    downstream = LogisticRegression(max_iter=10000)
-    if taskType == "Multi-Label Classification":
-        downstream = MultiOutputClassifier(downstream)
     X = []
     y = []
-
-    for batch_images, batch_dimensions, batch_labels in tqdm(task_tune_loader, desc=f"{task} Tuning", leave=False):
+    for batch_images, batch_dimensions, batch_labels in tqdm(task_loader, desc=f"Generating {task} Embeddings", leave=False):
         batch_images = batch_images.to(device)
         with torch.no_grad():
             representations = model.embed(batch_images, batch_dimensions)
             X.extend(representations.cpu().tolist())
             y.extend(batch_labels.cpu().tolist())
             
-    downstream.fit(X, y)
+    taskResults = {"Accuracy": [], "F1": [], "AUROC": []}
+    totData = len(X)
+    foldSize = totData // config.downstream_folds
+    for fold in tqdm(range(config.downstream_folds), desc=f"Evaluating {task} Folds", leave=False):
+        X_train = np.array(X[:fold * foldSize] + X[(fold + 1) * foldSize:])
+        y_train = np.array(y[:fold * foldSize] + y[(fold + 1) * foldSize:])
+        X_test = np.array(X[fold * foldSize:(fold + 1) * foldSize])
+        y_test = np.array(y[fold * foldSize:(fold + 1) * foldSize])
+    
+        downstream = LogisticRegression(max_iter=10000)
+        if taskType == "Multi-Label Classification":
+            downstream = MultiOutputClassifier(downstream)
 
-    task_preds = []
-    task_labels = []
-    for batch_images, batch_dimensions, batch_labels in tqdm(
-        task_test_loader, desc=f"{task} Testing", leave=False
-    ):
-        batch_images = batch_images.to(device)
-        with torch.no_grad():
-            representations = model.embed(batch_images, batch_dimensions)
-            predictions = downstream.predict_proba(representations.cpu().numpy())
-            if taskType == "Multi-Label Classification":
-                predictions = np.array(predictions).transpose(1, 0, 2)[:,:,1]
-            task_preds.extend(predictions.tolist())
-            task_labels.extend(batch_labels.cpu().tolist())
+        downstream.fit(X_train, y_train)
+        task_probs = downstream.predict_proba(X_test)
+        if taskType == "Multi-Label Classification":
+            task_probs = np.array(task_probs).transpose(1, 0, 2)[:,:,1]
+        elif label_size == 2:
+            task_probs = task_probs[:,1]
+            
+        if taskType == "Multi-Label Classification" or label_size == 2:
+            task_preds = np.round(task_probs)
+            acc = metrics.accuracy_score(y_test.flatten(), task_preds.flatten())
+            f1 = metrics.f1_score(y_test.flatten(), task_preds.flatten())
+            auroc = metrics.roc_auc_score(y_test.flatten(), task_probs.flatten())
+        elif taskType == "Multi-Class Classification":
+            task_preds = np.argmax(task_probs, axis=1)
+            acc = metrics.accuracy_score(y_test, task_preds)
+            f1 = metrics.f1_score(y_test, task_preds, average="macro")
+            auroc = metrics.roc_auc_score(y_test, task_probs, average="macro", multi_class="ovr")
 
-    if taskType == "Multi-Label Classification":
-        task_preds = np.array(task_preds)
-        task_labels = np.array(task_labels)
-        task_rounded_preds = np.round(task_preds)
-        accPerLabel = [
-            metrics.accuracy_score(
-                [label[i] for label in task_labels],
-                [pred[i] for pred in task_rounded_preds],
-            )
-            for i in range(label_size)
-        ]
-        f1PerLabel = [
-            metrics.f1_score(
-                [label[i] for label in task_labels],
-                [pred[i] for pred in task_rounded_preds],
-            )
-            for i in range(label_size)
-        ]
-        aurocPerLabel = [
-            metrics.roc_auc_score(
-                [label[i] for label in task_labels], [pred[i] for pred in task_preds]
-            )
-            for i in range(label_size)
-        ]
-        overallAcc = metrics.accuracy_score(
-            task_labels.flatten(), task_rounded_preds.flatten()
-        )
-        overallF1 = metrics.f1_score(
-            task_labels.flatten(), task_rounded_preds.flatten()
-        )
-        overallAUROC = metrics.roc_auc_score(
-            task_labels.flatten(), task_preds.flatten()
-        )
-        taskResults = {
-            "Accuracy": overallAcc,
-            "F1": overallF1,
-            "AUROC": overallAUROC,
-            "Accuracy Per Label": accPerLabel,
-            "F1 Per Label": f1PerLabel,
-            "AUROC Per Label": aurocPerLabel,
-        }
-        print('\t', taskResults)
-    elif taskType == "Multi-Class Classification":
-        task_probs = np.array(task_preds)
-        task_labels = np.array(task_labels)
-        task_preds = np.argmax(task_probs, axis=1)
-        acc = metrics.accuracy_score(task_labels, task_preds)
-        f1 = metrics.f1_score(task_labels, task_preds, average="macro")
-        auroc = metrics.roc_auc_score(task_labels, task_probs, average="macro", multi_class="ovr")
-        taskResults = {"Accuracy": acc, "F1": f1, "AUROC": auroc}
-        print('\t', taskResults)
+        taskResults["Accuracy"].append(acc)
+        taskResults["F1"].append(f1)
+        taskResults["AUROC"].append(auroc)
 
+    taskResults["Accuracy PM"] = round(np.std(taskResults["Accuracy"]) / np.sqrt(config.downstream_folds), 5)
+    taskResults["Accuracy"] = round(np.mean(taskResults["Accuracy"]), 5)
+    taskResults["F1 PM"] = round(np.std(taskResults["F1"]) / np.sqrt(config.downstream_folds), 5)
+    taskResults["F1"] = round(np.mean(taskResults["F1"]), 5)
+    taskResults["AUROC PM"] = round(np.std(taskResults["AUROC"]) / np.sqrt(config.downstream_folds), 5)
+    taskResults["AUROC"] = round(np.mean(taskResults["AUROC"]), 5)
+    print('\t', taskResults)
+    
     allResults[task] = taskResults
 pickle.dump(allResults, open(f'{save_dir}/{model_key}_temporal_withoutTime_downstreamResults.pkl', 'wb'))

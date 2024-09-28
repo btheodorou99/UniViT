@@ -26,7 +26,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 3
+cuda_num = 5
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
@@ -73,15 +73,18 @@ if os.path.exists(f"{save_dir}/medcoss.pt"):
     optimizer.load_state_dict(checkpoint["optimizer"])
     modality = checkpoint["modality"]
     modality = modalities[modalities.index(modality) :][1]
+    buffer = checkpoint["buffer"]
 else:
     modality = modalities[0]
+    buffer = []
 
 def findModalityBuffer(model, loader, num_centers, data_per_center):
     model.eval()
     embds = []
-    for batch_images, batch_dimensions in loader:
-        batch_cls = model.embed(batch_images.to(device), batch_dimensions.to(device))
-        embds.extend(batch_cls.cpu().detach().numpy())
+    with torch.no_grad():
+        for batch_images, batch_dimensions in tqdm(loader, desc="Finding Buffer", leave=False):
+            batch_cls = model.embed(batch_images.to(device), batch_dimensions.to(device))
+            embds.extend(batch_cls.cpu().detach().numpy())
     embds = np.array(embds)
     kmeans = KMeans(n_clusters=num_centers).fit(embds)
     centers = kmeans.cluster_centers_
@@ -95,7 +98,7 @@ def findModalityBuffer(model, loader, num_centers, data_per_center):
 # Train Model
 modalities = modalities[modalities.index(modality) :]
 loss_plot = []
-buffer = []
+print(modalities)
 for m_num, modality in enumerate(modalities):
     num_steps = 0
     train_data_modality = [p for p in train_data_all if p[0][3] == modality]
@@ -174,39 +177,41 @@ for m_num, modality in enumerate(modalities):
             optimizer.zero_grad()
             running_loss = running_loss[-999:] + [loss.detach().cpu().item()]
             pbar.set_description(
-                f"Current Loss: {np.mean(running_loss):.4f}"
+                f"{modality} Current Loss: {np.mean(running_loss):.4f}"
             )
             pbar.update(1)
             num_steps += 1
-            if num_steps >= config.tot_steps:
+            if num_steps >= tot_steps:
                 break
 
+    
+    pbar.close()
+    if modality != modalities[-1]:
+        modality_data = ImageDataset(train_data_modality, config, "cpu")
+        modality_loader = DataLoader(
+            modality_data,
+            batch_size=config.downstream_batch_size,
+            shuffle=False,
+            num_workers=config.num_workers,
+        )
+        modality_idx = findModalityBuffer(
+            model,
+            modality_loader,
+            int(NUM_CENTERS * len(train_data_modality)),
+            DATA_PER_CENTER,
+        )
+        modality_buffer = [train_data_modality[i] for i in modality_idx]
+        buffer = buffer + modality_buffer
+        
     torch.save(
         {
             "model": model.state_dict(),
             "optimizer": optimizer.state_dict(),
             "modality": modality,
+            "buffer": buffer,
         },
-        f"{save_dir}/medcoss.pt",
+        f"{save_dir}/medcoss2.pt",
     )
-    
-    pbar.close()
-    
-    modality_data = ImageDataset(train_data_modality, config, "cpu")
-    modality_loader = DataLoader(
-        modality_data,
-        batch_size=config.batch_size,
-        shuffle=False,
-        num_workers=config.num_workers,
-    )
-    modality_idx = findModalityBuffer(
-        model,
-        modality_loader,
-        int(NUM_CENTERS * len(train_data_modality)),
-        DATA_PER_CENTER,
-    )
-    modality_buffer = [train_data_modality[i] for i in modality_idx]
-    buffer = buffer + modality_buffer
 
 pbar.close()
 pickle.dump(loss_plot, open(f"{save_dir}/medcoss_loss_plot.pkl", "wb"))

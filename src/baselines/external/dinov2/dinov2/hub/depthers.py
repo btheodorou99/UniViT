@@ -135,7 +135,7 @@ def _make_dinov2_linear_depther(
         checkpoint = torch.hub.load_state_dict_from_url(url, map_location="cpu")
         if "state_dict" in checkpoint:
             state_dict = checkpoint["state_dict"]
-        model.load_state_dict(state_dict, strict=False)
+        model.load_state_dict(state_dict)
 
     return model
 
@@ -223,7 +223,7 @@ def _make_dinov2_dpt_depther(
         checkpoint = torch.hub.load_state_dict_from_url(url, map_location="cpu")
         if "state_dict" in checkpoint:
             state_dict = checkpoint["state_dict"]
-        model.load_state_dict(state_dict, strict=False)
+        model.load_state_dict(state_dict)
 
     return model
 

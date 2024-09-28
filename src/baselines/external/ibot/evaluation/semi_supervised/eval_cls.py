@@ -759,7 +759,7 @@ def main(args):
         new_pos_embed = torch.cat((extra_tokens, pos_tokens), dim=1)
         checkpoint_model['pos_embed'] = new_pos_embed
 
-        model.load_state_dict(checkpoint_model, strict=False)
+        model.load_state_dict(checkpoint_model)
 
     model.to(device)
 

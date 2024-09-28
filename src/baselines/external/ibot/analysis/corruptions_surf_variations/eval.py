@@ -55,7 +55,7 @@ if args.checkpoint:
         # model_dict = model.state_dict()
         # sd = {k: v for k, v in sd.items() if k in model_dict}
         # model_dict.update(sd)
-        net.load_state_dict(sd, strict=False)
+        net.load_state_dict(sd)
         
         print("=> loaded checkpoint '{}' (epoch {})".format(args.checkpoint, checkpoint['epoch']))
     else:

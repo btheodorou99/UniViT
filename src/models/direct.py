@@ -6,8 +6,8 @@ import torch.nn.functional as F
 class Embedding3D(nn.Module):
     def __init__(self, out_dim, temporal=False):
         super(Embedding3D, self).__init__()
-        self.depth = 16
-        self.image_dim = 128
+        self.depth = 10
+        self.image_dim = 224
 
         self.conv1 = nn.Conv3d(
             2 if temporal else 1, 16, kernel_size=3, stride=1, padding=1
@@ -43,12 +43,12 @@ class Embedding3D(nn.Module):
 
 
 class Embedding2D(nn.Module):
-    def __init__(self, out_dim, temporal=False):
+    def __init__(self, out_dim, channels=1, temporal=False):
         super(Embedding2D, self).__init__()
         self.image_dim = 128
 
         self.conv1 = nn.Conv2d(
-            2 if temporal else 1, 16, kernel_size=3, stride=1, padding=1
+            2*channels if temporal else channels, 16, kernel_size=3, stride=1, padding=1
         )
         self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1)
         self.conv3 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)

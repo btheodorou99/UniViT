@@ -53,6 +53,7 @@ For python-based LazyConfig, use "path.key=value".
     )
     parser.add_argument(
         "--output-dir",
+        # default="/shared/eng/data/bpt3/data/UniViT/save",
         default="/srv/local/data/bpt3/UniViT/save",
         type=str,
         help="Output directory to save logs and checkpoints",

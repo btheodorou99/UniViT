@@ -2,6 +2,7 @@ import torch
 import random
 import pickle
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
 from sklearn import metrics
 from src.config import Config
@@ -39,6 +40,23 @@ valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t]]
 tune_data = {task: tune_data[task] for task in valid_tasks}
 test_data = {task: test_data[task] for task in valid_tasks}
 
+cci_map = pd.read_csv(f"{data_dir}/CCI.csv")
+cci_map = {row['PTID']: sum(row[f'CCI{i}'] for i in range(1,21)) for _, row in cci_map.iterrows()}
+cci_values = [v for v in cci_map.values() if v == v]
+cci_threshold = np.percentile(cci_values, 75)
+cci_map = {k: 1 if v > cci_threshold else 0 for k, v in cci_map.items()}
+
+temporal_tasks = ['ADNI PET CCI', 'ACDC Abnormality', 'MIMIC-CXR Pneumothorax']
+tune_data['ADNI PET CCI'] = [[(v[0], v[1], v[2], v[3], cci_map[v[0].split('/')[-1].split('--')[0]]) for v in p] for p in tune_data['ADNI PET'] if p[0][0].split('/')[-1].split('--')[0] in cci_map]
+test_data['ADNI PET CCI'] = [[(v[0], v[1], v[2], v[3], cci_map[v[0].split('/')[-1].split('--')[0]]) for v in p] for p in test_data['ADNI PET'] if p[0][0].split('/')[-1].split('--')[0] in cci_map]
+task_map['ADNI PET CCI'] = 'Multi-Class Classification'
+tune_data['ACDC Abnormality'] = [[(v[0], v[1], v[2], v[3], 1 if v[4] > 0 else 0) for v in p] for p in tune_data['ACDC']]
+test_data['ACDC Abnormality'] = [[(v[0], v[1], v[2], v[3], 1 if v[4] > 0 else 0) for v in p] for p in test_data['ACDC']]
+task_map['ACDC Abnormality'] = 'Multi-Class Classification'
+tune_data['MIMIC-CXR Pneumothorax'] = [[(v[0], v[1], v[2], v[3], v[4][5]) for v in p] for p in tune_data['MIMIC-CXR']]
+test_data['MIMIC-CXR Pneumothorax'] = [[(v[0], v[1], v[2], v[3], v[4][5]) for v in p] for p in test_data['MIMIC-CXR']]
+task_map['MIMIC-CXR Pneumothorax'] = 'Multi-Class Classification'
+
 model = UniViT(
     config.max_height,
     config.max_width,
@@ -64,7 +82,7 @@ model.eval()
 model.requires_grad_(False)
 
 allResults = {}
-for task in tune_data:
+for task in temporal_tasks:
     if task not in task_map or task_map[task] not in ["Multi-Class Classification", "Multi-Label Classification"]:
         continue
     
@@ -126,6 +144,8 @@ for task in tune_data:
             predictions = downstream.predict_proba(representations.cpu().numpy())
             if taskType == "Multi-Label Classification":
                 predictions = np.array(predictions).transpose(1, 0, 2)[:,:,1]
+            elif label_size == 2:
+                predictions = np.array(predictions)[:,1]
             task_preds.extend(predictions.tolist())
             task_labels.extend(batch_labels.cpu().tolist())
 
@@ -173,8 +193,11 @@ for task in tune_data:
         print('\t', taskResults)
     elif taskType == "Multi-Class Classification":
         task_probs = np.array(task_preds)
+        if label_size == 2:
+            task_preds = np.round(task_probs)
+        else:
+            task_preds = np.argmax(task_probs, axis=1)
         task_labels = np.array(task_labels)
-        task_preds = np.argmax(task_probs, axis=1)
         acc = metrics.accuracy_score(task_labels, task_preds)
         f1 = metrics.f1_score(task_labels, task_preds, average="macro")
         auroc = metrics.roc_auc_score(task_labels, task_probs, average="macro", multi_class="ovr")

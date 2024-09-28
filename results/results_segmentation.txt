@@ -1,17 +1,46 @@
 DINOv2 2D:
-
+    Downstream Evaluation on BraTS-MEN-RT
+        {'Dice Coefficient': 0.05188, '95th Percentile Hausdorff Distance': 212.76757, 'Dice Coefficient PM': 0.0083, '95th Percentile Hausdorff Distance PM': 27.38252}
+    Downstream Evaluation on BraTS-PED
+        {'Dice Coefficient': 0.17356, '95th Percentile Hausdorff Distance': 46.70098, 'Dice Coefficient PM': 0.01708, '95th Percentile Hausdorff Distance PM': 2.39286}
+    Downstream Evaluation on BraTS-GLI
+        {'Dice Coefficient': 0.21767, '95th Percentile Hausdorff Distance': 84.85535, 'Dice Coefficient PM': 0.00634, '95th Percentile Hausdorff Distance PM': 0.86945}
+    Downstream Evaluation on BraTS-GoAT
+        {'Dice Coefficient': 0.35478, '95th Percentile Hausdorff Distance': 67.97018, 'Dice Coefficient PM': 0.00993, '95th Percentile Hausdorff Distance PM': 1.00804}
+    Downstream Evaluation on BraTS-MET                                                                                                                                                           | 1/10 [1:08:44<10:18:43, 4124.86s/it]
+        {'Dice Coefficient': 0.11108, '95th Percentile Hausdorff Distance': 59.94098, 'Dice Coefficient PM': 0.0073, '95th Percentile Hausdorff Distance PM': 1.14419}
 
 
 DINOv2 3D:
-    
-
+    Downstream Evaluation on BraTS-MEN-RT
+        {'Dice Coefficient': 0.08026, '95th Percentile Hausdorff Distance': 165.17216, 'Dice Coefficient PM': 0.01171, '95th Percentile Hausdorff Distance PM': 26.78216}
+    Downstream Evaluation on BraTS-PED
+        {'Dice Coefficient': 0.21355, '95th Percentile Hausdorff Distance': 52.48704, 'Dice Coefficient PM': 0.02042, '95th Percentile Hausdorff Distance PM': 2.29272}
+    Downstream Evaluation on BraTS-GLI
+        {'Dice Coefficient': 0.2637, '95th Percentile Hausdorff Distance': 86.49296, 'Dice Coefficient PM': 0.01224, '95th Percentile Hausdorff Distance PM': 1.06926}
+    Downstream Evaluation on BraTS-GoAT
+        {'Dice Coefficient': 0.38851, '95th Percentile Hausdorff Distance': 65.47176, 'Dice Coefficient PM': 0.01272, '95th Percentile Hausdorff Distance PM': 1.08381}
+    Downstream Evaluation on BraTS-MET
+        {'Dice Coefficient': 0.11045, '95th Percentile Hausdorff Distance': 59.49547, 'Dice Coefficient PM': 0.00871, '95th Percentile Hausdorff Distance PM': 1.34094}
 
 iBOT 2D:
-
+    Downstream Evaluation on BraTS-MEN-RT
+        {'Dice Coefficient': 0.09391, '95th Percentile Hausdorff Distance': 375.86148, 'Dice Coefficient PM': 0.01339, '95th Percentile Hausdorff Distance PM': 36.12161}
+    Downstream Evaluation on BraTS-PED
+        {'Dice Coefficient': 0.21016, '95th Percentile Hausdorff Distance': 58.70284, 'Dice Coefficient PM': 0.01924, '95th Percentile Hausdorff Distance PM': 11.85999}
+    Downstream Evaluation on BraTS-GLI
+        {'Dice Coefficient': 0.23048, '95th Percentile Hausdorff Distance': 75.79379, 'Dice Coefficient PM': 0.0096, '95th Percentile Hausdorff Distance PM': 0.93259}
+    Downstream Evaluation on BraTS-MET
+        {'Dice Coefficient': 0.07847, '95th Percentile Hausdorff Distance': 76.50332, 'Dice Coefficient PM': 0.00779, '95th Percentile Hausdorff Distance PM': 6.00239}
 
 
 iBOT 3D:
-    
+    Downstream Evaluation on BraTS-MEN-RT
+        {'Dice Coefficient': 0.21729, '95th Percentile Hausdorff Distance': 249.57569, 'Dice Coefficient PM': 0.02744, '95th Percentile Hausdorff Distance PM': 34.39354}
+    Downstream Evaluation on BraTS-PED
+        {'Dice Coefficient': 0.20592, '95th Percentile Hausdorff Distance': 54.66469, 'Dice Coefficient PM': 0.02294, '95th Percentile Hausdorff Distance PM': 2.36685}
+    Downstream Evaluation on BraTS-MET
+        {'Dice Coefficient': 0.17987, '95th Percentile Hausdorff Distance': 90.31438, 'Dice Coefficient PM': 0.01459, '95th Percentile Hausdorff Distance PM': 14.65875}
 
 
 MedCoSS:
@@ -23,4 +52,13 @@ Swin UNETR:
 
 
 UniViT:
-    
+    Downstream Evaluation on BraTS-MEN-RT
+        {'Dice Coefficient': 0.10201, '95th Percentile Hausdorff Distance': 282.02839, 'Dice Coefficient PM': 0.01458, '95th Percentile Hausdorff Distance PM': 38.26416}
+    Downstream Evaluation on BraTS-PED
+        {'Dice Coefficient': 0.29882, '95th Percentile Hausdorff Distance': 32.47127, 'Dice Coefficient PM': 0.02335, '95th Percentile Hausdorff Distance PM': 2.07376}
+    Downstream Evaluation on BraTS-GLI
+        {'Dice Coefficient': 0.21518, '95th Percentile Hausdorff Distance': 79.7356, 'Dice Coefficient PM': 0.0069, '95th Percentile Hausdorff Distance PM': 1.41114}
+    Downstream Evaluation on BraTS-GoAT
+        {'Dice Coefficient': 0.29087, '95th Percentile Hausdorff Distance': 62.38989, 'Dice Coefficient PM': 0.00822, '95th Percentile Hausdorff Distance PM': 0.99045}
+    Downstream Evaluation on BraTS-MET
+        {'Dice Coefficient': 0.08881, '95th Percentile Hausdorff Distance': 65.14099, 'Dice Coefficient PM': 0.0091, '95th Percentile Hausdorff Distance PM': 5.64222}

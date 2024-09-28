@@ -22,18 +22,17 @@ def parse_results(file_path):
             elif "{" in line and "}" in line:
                 metrics = eval(line)
                 if 'AUROC' in metrics:
-                    results[current_model][current_dataset] = round(metrics['AUROC'], 3)
+                    results[current_model][current_dataset] = f"{round(metrics['AUROC'], 3)} $\pm$ {round(metrics['AUROC PM'], 4)}"
                 else:
-                    results[current_model][current_dataset] = round(metrics['AUROC'], 3)
+                    results[current_model][current_dataset] = f"{round(metrics['AUROC'], 3)} $\pm$ {round(metrics['AUROC PM'], 4)}"
     
     return results
 
 def generate_latex_table(results):
     # Extract all datasets for columns
-    datasets = ['CheXpert', 'MIMIC-CXR', 
-            'BraTS-Path', 'CRC-HE',
-            'DeepLesion', 'ADNI PET',
-            'COVID-QU-Ex', 'ISIC', 'ADNI MRI', 'ACDC']
+    datasets = ['CheXpert', 'MIMIC-CXR', 'COVID-QU-Ex',
+                'BraTS-Path', 'CRC-HE', 'ISIC',
+                'DeepLesion', 'ADNI PET', 'ADNI MRI', 'ACDC']
     
     # Start LaTeX table
     latex_table = "\\begin{tabular}{l" + "c" * len(datasets) + "}\n"

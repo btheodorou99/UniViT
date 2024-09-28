@@ -515,7 +515,7 @@ def main(args, ds_init):
                 checkpoint_model['pos_embed'] = new_pos_embed
 
         utils.load_state_dict(model, checkpoint_model, prefix=args.model_prefix)
-        # model.load_state_dict(checkpoint_model, strict=False)
+        # model.load_state_dict(checkpoint_model)
 
     model.to(device)
 

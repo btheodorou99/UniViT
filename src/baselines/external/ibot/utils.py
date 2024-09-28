@@ -118,7 +118,7 @@ def load_pretrained_weights(model, pretrained_weights, checkpoint_key, model_nam
         state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
         # remove `backbone.` prefix induced by multicrop wrapper
         state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
-        msg = model.load_state_dict(state_dict, strict=False)
+        msg = model.load_state_dict(state_dict)
         print('Pretrained weights found at {} and loaded with msg: {}'.format(pretrained_weights, msg))
         return
     elif pretrained_weights == 'download':
@@ -145,7 +145,7 @@ def load_pretrained_weights(model, pretrained_weights, checkpoint_key, model_nam
         if url is not None:
             print("Since no pretrained weights are provided, we load the pretrained weights from {}.".format(url))
             state_dict = torch.hub.load_state_dict_from_url(url="https://dl.fbaipublicfiles.com/deit/" + url)
-            msg = model.load_state_dict(state_dict['model'], strict=False)
+            msg = model.load_state_dict(state_dict['model'])
             print('Supervised weights found at {} and loaded with msg: {}'.format(url, msg))
             return
     print("There is no reference weights available for this model => We use random weights.")
@@ -188,7 +188,7 @@ def restart_from_checkpoint(ckp_path, run_variables=None, **kwargs):
     for key, value in kwargs.items():
         if key in checkpoint and value is not None:
             try:
-                msg = value.load_state_dict(checkpoint[key], strict=False)
+                msg = value.load_state_dict(checkpoint[key])
                 print("=> loaded '{}' from checkpoint '{}' with msg {}".format(key, ckp_path, msg))
             except TypeError:
                 try:

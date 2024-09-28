@@ -77,7 +77,7 @@ def main(args, device, verbose=True):
                 sd = checkpoint[state_dict_path]
                 sd = {k[len('module.'):] if ('module.' in k) else k: v for k, v in sd.items()}
                 
-                msg = model.load_state_dict(sd, strict=False)
+                msg = model.load_state_dict(sd)
                 
                 print(msg)
                 print("=> loaded checkpoint '{}' (epoch {})".format(args.pretrained_weights, checkpoint['epoch']))
@@ -90,7 +90,7 @@ def main(args, device, verbose=True):
                 if url is not None:
                     print("Since no pretrained weights are provided, we load the pretrained weights from {}.".format(url))
                     state_dict = torch.hub.load_state_dict_from_url(url="https://dl.fbaipublicfiles.com/deit/" + url)
-                    msg = model.load_state_dict(state_dict['model'], strict=False)
+                    msg = model.load_state_dict(state_dict['model'])
                     print('Supervised weights found at {} and loaded with msg: {}'.format(url, msg))
             else:
                 error_msg = "=> no checkpoint found at '{}'".format(args.pretrained_weights)

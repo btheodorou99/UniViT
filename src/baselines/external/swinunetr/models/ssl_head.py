@@ -17,7 +17,7 @@ from monai.networks.nets.swin_unetr import SwinTransformer as SwinViT
 class SSLHead(nn.Module):
     def __init__(self, args, upsample="vae", dim=768):
         super(SSLHead, self).__init__()
-        patch_size = (1, 2, 2)
+        patch_size = (2, 2, 2)
         window_size = (5, 7, 7)
         self.swinViT = SwinViT(
             in_chans=args.in_channels,
@@ -44,11 +44,11 @@ class SSLHead(nn.Module):
             self.conv = nn.ConvTranspose3d(dim, args.in_channels, kernel_size=(32, 32, 32), stride=(32, 32, 32))
         elif upsample == "deconv":
             self.conv = nn.Sequential(
-                nn.ConvTranspose3d(dim, dim // 2, kernel_size=(2, 2, 2), stride=(2, 2, 2)),
-                nn.ConvTranspose3d(dim // 2, dim // 4, kernel_size=(2, 2, 2), stride=(2, 2, 2)),
-                nn.ConvTranspose3d(dim // 4, dim // 8, kernel_size=(2, 2, 2), stride=(2, 2, 2)),
-                nn.ConvTranspose3d(dim // 8, dim // 16, kernel_size=(2, 2, 2), stride=(2, 2, 2)),
-                nn.ConvTranspose3d(dim // 16, args.in_channels, kernel_size=(2, 2, 2), stride=(2, 2, 2)),
+                nn.ConvTranspose3d(dim, dim // 2, kernel_size=(2, 2, 2), stride=(2, 2, 2)),  # scale by (2, 2, 2)
+                nn.ConvTranspose3d(dim // 2, dim // 4, kernel_size=(5, 2, 2), stride=(5, 2, 2)),  # scale by (5, 2, 2)
+                nn.ConvTranspose3d(dim // 4, dim // 8, kernel_size=(1, 2, 2), stride=(1, 2, 2)),  # scale by (1, 2, 2)
+                nn.ConvTranspose3d(dim // 8, dim // 16, kernel_size=(1, 2, 2), stride=(1, 2, 2)),  # scale by (1, 2, 2)
+                nn.ConvTranspose3d(dim // 16, args.in_channels, kernel_size=(1, 2, 2), stride=(1, 2, 2)),  # scale by (1, 2, 2)
             )
         elif upsample == "vae":
             self.conv = nn.Sequential(

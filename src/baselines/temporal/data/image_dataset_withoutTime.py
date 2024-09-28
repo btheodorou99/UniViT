@@ -35,12 +35,12 @@ class ImageDataset(Dataset):
             scale_factor_width = self.config.max_width / origDim[2]
         else:
             scale_factor_width = 1
-        
+
         scale_factor_image = min(scale_factor_height, scale_factor_width)
         newHeight = min(max(int(origDim[1] * scale_factor_image), MIN_RESOLUTION), self.config.max_height)
         newWidth = min(max(int(origDim[2] * scale_factor_image), MIN_RESOLUTION), self.config.max_width)
         return (newSlice, newHeight, newWidth)
-      
+
     def load_image(self, image_path, chosenDim):
         if image_path.endswith(".npy"):
             img = torch.tensor(np.load(image_path), dtype=torch.float)

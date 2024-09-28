@@ -83,9 +83,9 @@ def make_and_restore_model(*_, arch, dataset, resume_path=None,
             # sd = {k: v for k, v in sd.items() if k in model_dict}
             # model_dict.update(sd)
             if use_normalization:
-                model.model.load_state_dict(sd, strict=False)
+                model.model.load_state_dict(sd)
             else:
-                model.load_state_dict(sd, strict=False)
+                model.load_state_dict(sd)
             
             if parallel:
                 model = ch.nn.DataParallel(model)

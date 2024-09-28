@@ -58,6 +58,7 @@ class PseudoImageFolder(ImageFolder):
                 img = img[:, :, img.shape[2] // 2]
             else: # Possibly take random slice
                 img = img[:, :, random.randint(0, img.shape[2] - 1)]
+            img = (img * 255).astype(np.uint8)
             img = Image.fromarray(img).convert("RGB")
         elif (
             image_path.endswith(".jpg")
