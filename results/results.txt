@@ -48,30 +48,37 @@ iBOT:
 
 MedCoSS:
     Downstream Evaluation on BraTS-Path
-        {'Accuracy': 0.60661, 'F1': 0.34993, 'AUROC': 0.81099, 'Accuracy PM': 0.00264, 'F1 PM': 0.00231, 'AUROC PM': 0.00219}
+        {'Accuracy': 0.6552, 'F1': 0.42855, 'AUROC': 0.84564, 'Accuracy PM': 0.00218, 'F1 PM': 0.00321, 'AUROC PM': 0.00126}
     Downstream Evaluation on CheXpert
-        {'Accuracy': 0.79903, 'F1': 0.49776, 'AUROC': 0.8013, 'Accuracy PM': 0.00028, 'F1 PM': 0.00109, 'AUROC PM': 0.00058}
+        {'Accuracy': 0.79998, 'F1': 0.48892, 'AUROC': 0.80002, 'Accuracy PM': 0.00143, 'F1 PM': 0.01104, 'AUROC PM': 0.00624}
     Downstream Evaluation on CRC-HE
-        {'Accuracy': 0.63224, 'F1': 0.60391, 'AUROC': 0.92745, 'Accuracy PM': 0.0014, 'F1 PM': 0.0016, 'AUROC PM': 0.00037}
+        {'Accuracy': 0.68638, 'F1': 0.67268, 'AUROC': 0.94629, 'Accuracy PM': 0.00225, 'F1 PM': 0.00228, 'AUROC PM': 0.00055}
     Downstream Evaluation on DeepLesion
-        {'Accuracy': 0.84613, 'F1': 0.40056, 'AUROC': 0.83313, 'Accuracy PM': 0.00353, 'F1 PM': 0.01224, 'AUROC PM': 0.006}
+        {'Accuracy': 0.85029, 'F1': 0.42429, 'AUROC': 0.85745, 'Accuracy PM': 0.00508, 'F1 PM': 0.01466, 'AUROC PM': 0.00658}
     Downstream Evaluation on ACDC
-        {'Accuracy': 0.92897, 'F1': 0.92879, 'AUROC': 0.99232, 'Accuracy PM': 0.00365, 'F1 PM': 0.00351, 'AUROC PM': 0.00082}
+        {'Accuracy': 0.29921, 'F1': 0.29113, 'AUROC': 0.65453, 'Accuracy PM': 0.02788, 'F1 PM': 0.03262, 'AUROC PM': 0.01928}
     Downstream Evaluation on ADNI MRI
-        {'Accuracy': 0.43746, 'F1': 0.43617, 'AUROC': 0.61746, 'Accuracy PM': 0.00433, 'F1 PM': 0.0043, 'AUROC PM': 0.00278}
+        {'Accuracy': 0.41909, 'F1': 0.41078, 'AUROC': 0.58962, 'Accuracy PM': 0.01243, 'F1 PM': 0.00998, 'AUROC PM': 0.00916}
     Downstream Evaluation on ISIC
-        {'Accuracy': 0.90806, 'F1': 0.53238, 'AUROC': 0.903, 'Accuracy PM': 0.00073, 'F1 PM': 0.00451, 'AUROC PM': 0.00105}
+        {'Accuracy': 0.91555, 'F1': 0.58313, 'AUROC': 0.92179, 'Accuracy PM': 0.00073, 'F1 PM': 0.00422, 'AUROC PM': 0.00126}
     Downstream Evaluation on COVID-QU-Ex
-        {'Accuracy': 0.69009, 'F1': 0.68712, 'AUROC': 0.85634, 'Accuracy PM': 0.00251, 'F1 PM': 0.00244, 'AUROC PM': 0.00156}
+        {'Accuracy': 0.75256, 'F1': 0.74221, 'AUROC': 0.90371, 'Accuracy PM': 0.0014, 'F1 PM': 0.00613, 'AUROC PM': 0.00123}
     Downstream Evaluation on ADNI PET
-        {'Accuracy': 0.46192, 'F1': 0.44291, 'AUROC': 0.65289, 'Accuracy PM': 0.00996, 'F1 PM': 0.00917, 'AUROC PM': 0.00928}
+        {'Accuracy': 0.44417, 'F1': 0.42338, 'AUROC': 0.63712, 'Accuracy PM': 0.01082, 'F1 PM': 0.00955, 'AUROC PM': 0.01481}
     Downstream Evaluation on MIMIC-CXR
-        {'Accuracy': 0.82946, 'F1': 0.27489, 'AUROC': 0.78062, 'Accuracy PM': 0.00038, 'F1 PM': 0.00095, 'AUROC PM': 0.00059}
+        {'Accuracy': 0.83205, 'F1': 0.31616, 'AUROC': 0.79335, 'Accuracy PM': 0.00081, 'F1 PM': 0.00219, 'AUROC PM': 0.0017}
 
 
 
-Swin UNETR:
-
+SwinUNETR:
+    Downstream Evaluation on ADNI PET
+        {'Accuracy': 0.44271, 'F1': 0.42584, 'AUROC': 0.644, 'Accuracy PM': 0.01279, 'F1 PM': 0.00992, 'AUROC PM': 0.00869}                                                                                                                         
+    Downstream Evaluation on ADNI MRI
+        {'Accuracy': 0.41722, 'F1': 0.41138, 'AUROC': 0.59336, 'Accuracy PM': 0.01176, 'F1 PM': 0.00961, 'AUROC PM': 0.00917}                                                                                                                       
+    Downstream Evaluation on ACDC
+        {'Accuracy': 0.34226, 'F1': 0.29717, 'AUROC': 0.65677, 'Accuracy PM': 0.03587, 'F1 PM': 0.03605, 'AUROC PM': 0.02615}                                                                                                                       
+    Downstream Evaluation on DeepLesion
+        {'Accuracy': 0.87417, 'F1': 0.58684, 'AUROC': 0.88784, 'Accuracy PM': 0.00337, 'F1 PM': 0.01265, 'AUROC PM': 0.00545}                                                                                                                       
 
 
 UniViT:
@@ -107,27 +114,3 @@ UniViT w/o Depth:
         {'Accuracy': 0.4145, 'F1': 0.40307, 'AUROC': 0.58042, 'Accuracy PM': 0.0096, 'F1 PM': 0.00626, 'AUROC PM': 0.00966}
     Downstream Evaluation on ACDC
         {'Accuracy': 0.35227, 'F1': 0.33047, 'AUROC': 0.65543, 'Accuracy PM': 0.04086, 'F1 PM': 0.04364, 'AUROC PM': 0.03986}
-
-
-
-UniViT Weighted:
-    Downstream Evaluation on BraTS-Path
-        {'Accuracy': 0.74045, 'F1': 0.61846, 'AUROC': 0.91898, 'Accuracy PM': 0.00118, 'F1 PM': 0.00233, 'AUROC PM': 0.00093}
-    Downstream Evaluation on CheXpert
-        {'Accuracy': 0.79854, 'F1': 0.48793, 'AUROC': 0.79789, 'Accuracy PM': 0.00162, 'F1 PM': 0.01203, 'AUROC PM': 0.00609}
-    Downstream Evaluation on CRC-HE
-        {'Accuracy': 0.7822, 'F1': 0.77918, 'AUROC': 0.97146, 'Accuracy PM': 0.00207, 'F1 PM': 0.00207, 'AUROC PM': 0.00033}
-    Downstream Evaluation on DeepLesion
-        {'Accuracy': 0.88241, 'F1': 0.63448, 'AUROC': 0.90054, 'Accuracy PM': 0.00186, 'F1 PM': 0.0128, 'AUROC PM': 0.00613}
-    Downstream Evaluation on ACDC
-        {'Accuracy': 0.38516, 'F1': 0.37069, 'AUROC': 0.69895, 'Accuracy PM': 0.03827, 'F1 PM': 0.03892, 'AUROC PM': 0.02372}
-    Downstream Evaluation on ADNI MRI
-        {'Accuracy': 0.41682, 'F1': 0.40913, 'AUROC': 0.584, 'Accuracy PM': 0.0094, 'F1 PM': 0.00754, 'AUROC PM': 0.0087}
-    Downstream Evaluation on ISIC
-        {'Accuracy': 0.91768, 'F1': 0.61336, 'AUROC': 0.92902, 'Accuracy PM': 0.00062, 'F1 PM': 0.00349, 'AUROC PM': 0.00097}
-    Downstream Evaluation on COVID-QU-Ex
-        {'Accuracy': 0.77978, 'F1': 0.76946, 'AUROC': 0.91593, 'Accuracy PM': 0.00143, 'F1 PM': 0.00568, 'AUROC PM': 0.00096}
-    Downstream Evaluation on ADNI PET
-        {'Accuracy': 0.4599, 'F1': 0.44712, 'AUROC': 0.63124, 'Accuracy PM': 0.01484, 'F1 PM': 0.01497, 'AUROC PM': 0.01465}
-    Downstream Evaluation on MIMIC-CXR
-        {'Accuracy': 0.83199, 'F1': 0.3271, 'AUROC': 0.79185, 'Accuracy PM': 0.00083, 'F1 PM': 0.00209, 'AUROC PM': 0.0017}

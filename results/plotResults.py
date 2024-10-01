@@ -110,10 +110,11 @@ method_colors = {
     'DINOv2': 'orange',
     'iBOT': 'green',
     'MedCoSS': 'blue',
-    # 'Swin UNETR': 'purple',
+    # 'SwinUNETR': 'purple',
     'UniViT': 'red'
 }
 results = {dataset: {method: results[dataset][method] if method in results[dataset] else 0.0 for method in method_colors} for dataset in results}
+print(results)
 ranks = {method: [] for method in method_colors}
 for dataset in results:
     ordering = sorted(results[dataset], key=lambda x: results[dataset][x], reverse=True)

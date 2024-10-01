@@ -9,16 +9,18 @@ from torch.nn.modules.utils import _quadruple
 from typing import Callable, Optional, Tuple, Union
 
 class Conv4d(nn.Module):
-    def __init__(self,
-                 in_channels:int,
-                 out_channels:int,
-                 kernel_size:Union[int, tuple],
-                 stride:Union[int, tuple] = (1, 1, 1, 1),
-                 padding:Union[int, tuple] = (0, 0, 0, 0),
-                 dilation:Union[int, tuple] = (1, 1, 1, 1),
-                 groups:int = 1,
-                 bias=False,
-                 padding_mode:str ='zeros'):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: Union[int, tuple],
+        stride: Union[int, tuple] = (1, 1, 1, 1),
+        padding: Union[int, tuple] = (0, 0, 0, 0),
+        dilation: Union[int, tuple] = (1, 1, 1, 1),
+        groups: int = 1,
+        bias=False,
+        padding_mode: str = "zeros",
+    ):
         super(Conv4d, self).__init__()
         kernel_size = _quadruple(kernel_size)
         stride = _quadruple(stride)
@@ -26,20 +28,23 @@ class Conv4d(nn.Module):
         dilation = _quadruple(dilation)
 
         if in_channels % groups != 0:
-            raise ValueError('in_channels must be divisible by groups')
+            raise ValueError("in_channels must be divisible by groups")
         if out_channels % groups != 0:
-            raise ValueError('out_channels must be divisible by groups')
-        valid_padding_modes = {'zeros'}
+            raise ValueError("out_channels must be divisible by groups")
+        valid_padding_modes = {"zeros"}
         if padding_mode not in valid_padding_modes:
-            raise ValueError("padding_mode must be one of {}, but got padding_mode='{}'".format(
-                valid_padding_modes, padding_mode))
+            raise ValueError(
+                "padding_mode must be one of {}, but got padding_mode='{}'".format(
+                    valid_padding_modes, padding_mode
+                )
+            )
 
         # Assertions for constructor arguments
-        assert len(kernel_size) == 4, '4D kernel size expected!'
-        assert len(stride) == 4, '4D Stride size expected!!'
-        assert len(padding) == 4, '4D Padding size expected!!'
-        assert len(dilation) == 4, '4D dilation size expected!'
-        assert groups == 1, 'Groups other than 1 not yet implemented!'
+        assert len(kernel_size) == 4, "4D kernel size expected!"
+        assert len(stride) == 4, "4D Stride size expected!!"
+        assert len(padding) == 4, "4D Padding size expected!!"
+        assert len(dilation) == 4, "4D dilation size expected!"
+        assert groups == 1, "Groups other than 1 not yet implemented!"
 
         # Store constructor arguments
         self.in_channels = in_channels
@@ -59,7 +64,9 @@ class Conv4d(nn.Module):
         # # # # # self._reversed_padding_repeated_twice = _reverse_repeat_tuple(self.padding, 3)
 
         # Construct weight and bias of 4D convolution
-        self.weight = nn.Parameter(torch.Tensor(out_channels, in_channels // groups, *kernel_size))
+        self.weight = nn.Parameter(
+            torch.Tensor(out_channels, in_channels // groups, *kernel_size)
+        )
         if bias:
             self.bias = nn.Parameter(torch.Tensor(out_channels))
         else:
@@ -71,13 +78,15 @@ class Conv4d(nn.Module):
 
         for i in range(self.kernel_size[0]):
             # Initialize a Conv3D layer
-            conv3d_layer = nn.Conv3d(in_channels=self.in_channels,
-                                     out_channels=self.out_channels,
-                                     kernel_size=self.kernel_size[1::],
-                                     padding=self.padding[1::],
-                                     dilation=self.dilation[1::],
-                                     stride=self.stride[1::],
-                                     bias=False)
+            conv3d_layer = nn.Conv3d(
+                in_channels=self.in_channels,
+                out_channels=self.out_channels,
+                kernel_size=self.kernel_size[1::],
+                padding=self.padding[1::],
+                dilation=self.dilation[1::],
+                stride=self.stride[1::],
+                bias=False,
+            )
             conv3d_layer.weight = nn.Parameter(self.weight[:, :, i, :, :])
 
             # Store the layer
@@ -92,7 +101,6 @@ class Conv4d(nn.Module):
             bound = 1 / math.sqrt(fan_in)
             nn.init.uniform_(self.bias, -bound, bound)
 
-
     def forward(self, input):
         # Define shortcut names for dimensions of input and kernel
         (Batch, _, l_i, d_i, h_i, w_i) = tuple(input.shape)
@@ -102,10 +110,10 @@ class Conv4d(nn.Module):
         (l_s, d_s, h_s, w_s) = self.stride
 
         # Compute the size of the output tensor based on the zero padding
-        l_o = (l_i + 2 * l_p - (l_k) - (l_k-1) * (l_d-1))//l_s + 1
-        d_o = (d_i + 2 * d_p - (d_k) - (d_k-1) * (d_d-1))//d_s + 1
-        h_o = (h_i + 2 * h_p - (h_k) - (h_k-1) * (h_d-1))//h_s + 1
-        w_o = (w_i + 2 * w_p - (w_k) - (w_k-1) * (w_d-1))//w_s + 1
+        l_o = (l_i + 2 * l_p - (l_k) - (l_k - 1) * (l_d - 1)) // l_s + 1
+        d_o = (d_i + 2 * d_p - (d_k) - (d_k - 1) * (d_d - 1)) // d_s + 1
+        h_o = (h_i + 2 * h_p - (h_k) - (h_k - 1) * (h_d - 1)) // h_s + 1
+        w_o = (w_i + 2 * w_p - (w_k) - (w_k - 1) * (w_d - 1)) // w_s + 1
 
         # Pre-define output tensors
         out = torch.zeros(Batch, self.out_channels, l_o, d_o, h_o, w_o).to(input.device)
@@ -113,22 +121,25 @@ class Conv4d(nn.Module):
         # Convolve each kernel frame i with each input frame j
         for i in range(l_k):
             # Calculate the zero-offset of kernel frame i
-            zero_offset = - l_p + (i * l_d)
+            zero_offset = -l_p + (i * l_d)
             # Calculate the range of input frame j corresponding to kernel frame i
             j_start = max(zero_offset % l_s, zero_offset)
-            j_end = min(l_i, l_i + l_p - (l_k-i-1)*l_d)
+            j_end = min(l_i, l_i + l_p - (l_k - i - 1) * l_d)
             # Convolve each kernel frame i with corresponding input frame j
             for j in range(j_start, j_end, l_s):
                 # Calculate the output frame
                 out_frame = (j - zero_offset) // l_s
                 # Add results to this output frame
-                out[:, :, out_frame, :, :, :] += self.conv3d_layers[i](input[:, :, j, :, :])
+                out[:, :, out_frame, :, :, :] += self.conv3d_layers[i](
+                    input[:, :, j, :, :]
+                )
 
         # Add bias to output
         if self.bias is not None:
             out = out + self.bias.view(1, -1, 1, 1, 1, 1)
 
         return out
+
 
 class MaskedSequential(nn.Module):
     def __init__(self, args):
@@ -140,13 +151,20 @@ class MaskedSequential(nn.Module):
             input = module(input, mask) if mask is not None else module(input)
         return input
 
+
 class MLPBlock(MLP):
     """Transformer MLP block."""
 
     _version = 2
 
     def __init__(self, in_dim: int, mlp_dim: int, dropout: float):
-        super().__init__(in_dim, [mlp_dim, in_dim], activation_layer=nn.GELU, inplace=None, dropout=dropout)
+        super().__init__(
+            in_dim,
+            [mlp_dim, in_dim],
+            activation_layer=nn.GELU,
+            inplace=None,
+            dropout=dropout,
+        )
 
         for m in self.modules():
             if isinstance(m, nn.Linear):
@@ -184,6 +202,7 @@ class MLPBlock(MLP):
             error_msgs,
         )
 
+
 class EncoderBlock(nn.Module):
     """Transformer encoder block."""
 
@@ -201,7 +220,9 @@ class EncoderBlock(nn.Module):
 
         # Attention block
         self.ln_1 = norm_layer(hidden_dim)
-        self.self_attention = nn.MultiheadAttention(hidden_dim, num_heads, dropout=attention_dropout, batch_first=True)
+        self.self_attention = nn.MultiheadAttention(
+            hidden_dim, num_heads, dropout=attention_dropout, batch_first=True
+        )
         self.dropout = nn.Dropout(dropout)
 
         # MLP block
@@ -209,7 +230,10 @@ class EncoderBlock(nn.Module):
         self.mlp = MLPBlock(hidden_dim, mlp_dim, dropout)
 
     def forward(self, input: torch.Tensor, mask: Optional[torch.Tensor] = None):
-        torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, hidden_dim) got {input.shape}")
+        torch._assert(
+            input.dim() == 3,
+            f"Expected (batch_size, seq_length, hidden_dim) got {input.shape}",
+        )
         x = self.ln_1(input)
         x, _ = self.self_attention(x, x, x, key_padding_mask=mask, need_weights=False)
         x = self.dropout(x)
@@ -251,7 +275,10 @@ class Encoder(nn.Module):
         self.ln = norm_layer(hidden_dim)
 
     def forward(self, input: torch.Tensor, mask: Optional[torch.Tensor] = None):
-        torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, hidden_dim) got {input.shape}")
+        torch._assert(
+            input.dim() == 3,
+            f"Expected (batch_size, seq_length, hidden_dim) got {input.shape}",
+        )
         return self.ln(self.layers(self.dropout(input), mask))
 
 class ProjectionHead(nn.Module):
@@ -297,8 +324,12 @@ class MedCoSS(nn.Module):
         norm_layer: Callable[..., torch.nn.Module] = partial(nn.LayerNorm, eps=1e-6),
     ):
         super().__init__()
-        torch._assert(max_height_size % patch_size == 0, "Input height indivisible by patch size!")
-        torch._assert(max_width_size % patch_size == 0, "Input width indivisible by patch size!")
+        torch._assert(
+            max_height_size % patch_size == 0, "Input height indivisible by patch size!"
+        )
+        torch._assert(
+            max_width_size % patch_size == 0, "Input width indivisible by patch size!"
+        )
         self.image_height = max_height_size
         self.image_width = max_width_size
         self.image_depth = max_depth_size
@@ -316,18 +347,29 @@ class MedCoSS(nn.Module):
         self.norm_layer = norm_layer
         
         self.patchify_all = Conv4d(
-            in_channels=self.image_channels, out_channels=representation_size, kernel_size=(time_patch_size, depth_patch_size, patch_size, patch_size), stride=(time_patch_size, depth_patch_size, patch_size, patch_size)
+            in_channels=self.image_channels,
+            out_channels=representation_size,
+            kernel_size=(time_patch_size, depth_patch_size, patch_size, patch_size), stride=(time_patch_size, depth_patch_size, patch_size, patch_size)
         )
         self.patchify_noTime = nn.Conv3d(
-            in_channels=self.image_channels, out_channels=representation_size, kernel_size=(depth_patch_size, patch_size, patch_size), stride=(depth_patch_size, patch_size, patch_size)
+            in_channels=self.image_channels,
+            out_channels=representation_size,
+            kernel_size=(depth_patch_size, patch_size, patch_size),
+            stride=(depth_patch_size, patch_size, patch_size),
         )
         self.patchify_no3D = nn.Conv3d(
-            in_channels=self.image_channels, out_channels=representation_size, kernel_size=(time_patch_size, patch_size, patch_size), stride=(time_patch_size, patch_size, patch_size)
+            in_channels=self.image_channels,
+            out_channels=representation_size,
+            kernel_size=(time_patch_size, patch_size, patch_size),
+            stride=(time_patch_size, patch_size, patch_size),
         )
         self.patchify_noTimeNo3D = nn.Conv2d(
-            in_channels=self.image_channels, out_channels=representation_size, kernel_size=(patch_size, patch_size), stride=(patch_size, patch_size)
+            in_channels=self.image_channels,
+            out_channels=representation_size,
+            kernel_size=(patch_size, patch_size),
+            stride=(patch_size, patch_size),
         )
-        
+
         self.masked_embed = nn.Parameter(torch.zeros(1, 1, representation_size))
         self.seq_length_all = (
             (self.image_height // patch_size) * 
@@ -398,11 +440,26 @@ class MedCoSS(nn.Module):
         p = self.patch_size
         p_d = self.depth_patch_size
         p_t = self.time_patch_size
-        torch._assert(t == self.image_time, f"Wrong image time dimension! Expected {self.image_time} but got {t}!")
-        torch._assert(s == self.image_depth, f"Wrong image depth dimension! Expected {self.image_depth} but got {s}!")
-        torch._assert(c == self.image_channels, f"Wrong number of image channels! Expected {self.image_channels} but got {c}!")
-        torch._assert(h == self.image_height, f"Wrong image height! Expected {self.image_height} but got {h}!")
-        torch._assert(w == self.image_width, f"Wrong image width! Expected {self.image_width} but got {w}!")
+        torch._assert(
+            t == self.image_time,
+            f"Wrong image time dimension! Expected {self.image_time} but got {t}!",
+        )
+        torch._assert(
+            s == self.image_depth,
+            f"Wrong image depth dimension! Expected {self.image_depth} but got {s}!",
+        )
+        torch._assert(
+            c == self.image_channels,
+            f"Wrong number of image channels! Expected {self.image_channels} but got {c}!",
+        )
+        torch._assert(
+            h == self.image_height,
+            f"Wrong image height! Expected {self.image_height} but got {h}!",
+        )
+        torch._assert(
+            w == self.image_width,
+            f"Wrong image width! Expected {self.image_width} but got {w}!",
+        )
         n_t = self.image_time // p_t
         n_d = self.image_depth // p_d
         n_h = h // p

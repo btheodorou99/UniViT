@@ -43,7 +43,10 @@ def generate_latex_table(results):
     for model, model_data in results.items():
         row = [model]
         for dataset in datasets:
-            row.append(str(model_data.get(dataset, 'N/A')))
+            if dataset not in model_data:
+                row.append("-")
+            else:
+                row.append(str(model_data.get(dataset, 'N/A')))
         latex_table += " & ".join(row) + " \\\\\n"
     
     latex_table += "\\end{tabular}"

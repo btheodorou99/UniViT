@@ -82,8 +82,8 @@ class SSLHead(nn.Module):
         x4_reshape = x_out.flatten(start_dim=2, end_dim=4)
         x4_reshape = x4_reshape.transpose(1, 2)
         if features_only:
-            return x4_reshape.mean(dim=1)
-            # return x4_reshape[:, 1]
+            # return x4_reshape.mean(dim=1)
+            return x4_reshape[:, 1]
         x_rot = self.rotation_pre(x4_reshape[:, 0])
         x_rot = self.rotation_head(x_rot)
         x_contrastive = self.contrastive_pre(x4_reshape[:, 1])

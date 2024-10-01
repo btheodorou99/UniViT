@@ -14,7 +14,7 @@ from sklearn.multioutput import MultiOutputClassifier
 import torch.multiprocessing
 torch.multiprocessing.set_sharing_strategy('file_system')
 
-model_key = "univit_weighted"
+model_key = "univit"
 
 SEED = 4
 random.seed(SEED)

@@ -37,7 +37,7 @@ train_loader = DataLoader(
     train_data,
     batch_size=config.batch_size,
     shuffle=True,
-    num_workers=int(0.5*config.num_workers),
+    num_workers=config.num_workers,
 )
 knn_data = {
     mod: random.choices(data, k=250)

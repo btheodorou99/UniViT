@@ -19,12 +19,30 @@ iBOT:
 
 
 MedCoSS:
+    Downstream Evaluation on ADNI PET CN
+        {'Accuracy': 0.71897, 'F1': 0.81527, 'AUROC': 0.69598, 'Accuracy PM': 0.01637, 'F1 PM': 0.01331, 'AUROC PM': 0.02121}
+    Downstream Evaluation on ACDC Abnormality
+        {'Accuracy': 0.78, 'F1': 0.87188, 'AUROC': 0.59152, 'Accuracy PM': 0.03406, 'F1 PM': 0.02226, 'AUROC PM': 0.05859}
+    Downstream Evaluation on MIMIC-CXR Pneumothorax
+        {'Accuracy': 0.98174, 'F1': 0.0, 'AUROC': 0.82956, 'Accuracy PM': 0.00082, 'F1 PM': 0.0, 'AUROC PM': 0.01153}
     
-    
+
+
+MedCoSS w/o Time:
+    Downstream Evaluation on ADNI PET CN
+        {'Accuracy': 0.6931, 'F1': 0.80638, 'AUROC': 0.64352, 'Accuracy PM': 0.02052, 'F1 PM': 0.01495, 'AUROC PM': 0.02037}
+    Downstream Evaluation on ACDC Abnormality
+        {'Accuracy': 0.74667, 'F1': 0.85096, 'AUROC': 0.57783, 'Accuracy PM': 0.03239, 'F1 PM': 0.02158, 'AUROC PM': 0.0576}
+    Downstream Evaluation on MIMIC-CXR Pneumothorax
+        {'Accuracy': 0.98174, 'F1': 0.0, 'AUROC': 0.74204, 'Accuracy PM': 0.00082, 'F1 PM': 0.0, 'AUROC PM': 0.01151}
+
 
 
 SwinUNETR:
-
+    Downstream Evaluation on ADNI PET CN
+        {'Accuracy': 0.69483, 'F1': 0.7945, 'AUROC': 0.6852, 'Accuracy PM': 0.01759, 'F1 PM': 0.01354, 'AUROC PM': 0.01844}
+    Downstream Evaluation on ACDC Abnormality
+        {'Accuracy': 0.74, 'F1': 0.83647, 'AUROC': 0.59787, 'Accuracy PM': 0.0405, 'F1 PM': 0.02923, 'AUROC PM': 0.05962}
 
 
 

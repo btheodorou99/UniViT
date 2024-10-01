@@ -20,7 +20,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 5
+cuda_num = 2
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
@@ -101,9 +101,7 @@ for task in temporal_tasks:
         continue
         
     print(f'Downstream Evaluation on {task}')
-    task_data = ImageDataset(
-        task_data, config, "cpu", multiclass=multiclass
-    )
+    task_data = ImageDataset(task_data, config, "cpu", multiclass=multiclass)
     task_loader = DataLoader(
         task_data,
         batch_size=config.downstream_batch_size,
@@ -150,6 +148,12 @@ for task in temporal_tasks:
             task_preds = np.argmax(task_probs, axis=1)
             acc = metrics.accuracy_score(y_test, task_preds)
             f1 = metrics.f1_score(y_test, task_preds, average="macro")
+            present_classes = np.unique(y_test)
+            if len(present_classes) != label_size:
+                task_probs = task_probs[:, present_classes]
+                task_probs = task_probs / task_probs.sum(axis=1, keepdims=True)
+                label_mapping = {c: i for i, c in enumerate(present_classes)}
+                y_test = np.array([label_mapping[c] for c in y_test])
             auroc = metrics.roc_auc_score(y_test, task_probs, average="macro", multi_class="ovr")
 
         taskResults["Accuracy"].append(acc)
@@ -163,6 +167,6 @@ for task in temporal_tasks:
     taskResults["AUROC PM"] = round(np.std(taskResults["AUROC"]) / np.sqrt(config.downstream_folds), 5)
     taskResults["AUROC"] = round(np.mean(taskResults["AUROC"]), 5)
     print('\t', taskResults)
-    
+
     allResults[task] = taskResults
 pickle.dump(allResults, open(f'{save_dir}/{model_key}_temporal_downstreamResults.pkl', 'wb'))

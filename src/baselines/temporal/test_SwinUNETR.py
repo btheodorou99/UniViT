@@ -9,10 +9,14 @@ from src.config import Config
 from torch.utils.data import DataLoader
 from sklearn.linear_model import LogisticRegression
 from sklearn.multioutput import MultiOutputClassifier
-from src.baselines.external.medcoss.model import MedCoSS
-from src.baselines.temporal.data.image_dataset_withoutTime import ImageDataset
+from src.baselines.temporal.data.image_dataset_pretrained import ImageDataset
+from src.baselines.external.swinunetr.models.ssl_head import SSLHead
 
-model_key = "medcoss"
+import torch.multiprocessing
+torch.multiprocessing.set_sharing_strategy('file_system')
+
+model_key = "swinunetr"
+EMBEDDING_DIM = 768
 
 SEED = 4
 random.seed(SEED)
@@ -40,7 +44,7 @@ valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t]]
 tune_data = {task: tune_data[task] for task in valid_tasks}
 test_data = {task: test_data[task] for task in valid_tasks}
 
-temporal_tasks = ['ADNI PET CN', 'ADNI MRI CN', 'ACDC Abnormality', 'MIMIC-CXR Pneumothorax']
+temporal_tasks = ['ADNI PET CN', 'ADNI MRI CN', 'ACDC Abnormality']
 tune_data['ADNI PET CN'] = [[(v[0], v[1], v[2], v[3], 1 if v[4] > 0 else 0) for v in p] for p in tune_data['ADNI PET']]
 test_data['ADNI PET CN'] = [[(v[0], v[1], v[2], v[3], 1 if v[4] > 0 else 0) for v in p] for p in test_data['ADNI PET']]
 task_map['ADNI PET CN'] = 'Multi-Class Classification'
@@ -54,30 +58,18 @@ tune_data['MIMIC-CXR Pneumothorax'] = [[(v[0], v[1], v[2], v[3], v[4][5]) for v 
 test_data['MIMIC-CXR Pneumothorax'] = [[(v[0], v[1], v[2], v[3], v[4][5]) for v in p] for p in test_data['MIMIC-CXR']]
 task_map['MIMIC-CXR Pneumothorax'] = 'Multi-Class Classification'
 
-model = MedCoSS(
-    config.max_height,
-    config.max_width,
-    config.max_depth,
-    config.max_time,
-    config.num_channels,
-    config.patch_size,
-    config.depth_patch_size,
-    config.time_patch_size,
-    config.representation_size,
-    config.num_layers,
-    config.num_heads,
-    config.projection_size,
-    config.mlp_dim,
-    config.dropout,
-    config.attention_dropout,
-    config.mask_prob,
-).to(device)
-print("Loading previous model")
-model.load_state_dict(
-    torch.load(f"{save_dir}/{model_key}.pt", map_location="cpu")["model"]
-)
+config.in_channels = 1
+config.feature_size = 48
+config.dropout_path_rate = 0.0
+config.use_checkpoint = False
+config.spatial_dims = 3
+
+model = model = SSLHead(config)
+state_dict = torch.load(f"{save_dir}/{model_key}.pt", map_location='cpu')['state_dict']
+model.load_state_dict(state_dict)
 model.eval()
 model.requires_grad_(False)
+model.to(device)
 
 allResults = {}
 for task in temporal_tasks:
@@ -99,9 +91,11 @@ for task in temporal_tasks:
             continue
     else:
         continue
-        
+    
     print(f'Downstream Evaluation on {task}')
-    task_data = ImageDataset(task_data, config, "cpu", multiclass=multiclass)
+    task_data = ImageDataset(
+        task_data, config, "cpu", image_depth=True, multiclass=multiclass
+    )
     task_loader = DataLoader(
         task_data,
         batch_size=config.downstream_batch_size,
@@ -112,10 +106,10 @@ for task in temporal_tasks:
     taskType = task_map[task]
     X = []
     y = []
-    for batch_images, batch_dimensions, batch_labels in tqdm(task_loader, desc=f"Generating {task} Embeddings", leave=False):
+    for batch_images, batch_labels in tqdm(task_loader, desc=f"Generating {task} Embeddings", leave=False):
         batch_images = batch_images.to(device)
         with torch.no_grad():
-            representations = model.embed(batch_images, batch_dimensions)
+            representations = model(batch_images, features_only=True)
             X.extend(representations.cpu().tolist())
             y.extend(batch_labels.cpu().tolist())
             
@@ -169,4 +163,4 @@ for task in temporal_tasks:
     print('\t', taskResults)
 
     allResults[task] = taskResults
-pickle.dump(allResults, open(f'{save_dir}/{model_key}_temporal_withoutTime_downstreamResults.pkl', 'wb'))
+pickle.dump(allResults, open(f"{save_dir}/{model_key}_temporal_downstreamResults.pkl", "wb"))

@@ -37,12 +37,14 @@ tune_data_temporal = {m: [[v for v in p if v[4] is not None] for p in tune_data_
 tune_data_temporal_paths = {m: set([v[0] for p in tune_data_temporal[m] for v in p]) for m in tune_data_temporal}
 tune_data_static = {m: [[v] for v in tune_data_static[m] if v[4] is not None and (m not in tune_data_temporal_paths or v[0] not in tune_data_temporal_paths[m])] for m in tune_data_static}
 tune_data = {m: tune_data_static[m] + (tune_data_temporal[m] if m in tune_data_temporal else []) for m in tune_data_static}
+
 test_data_static = pickle.load(open(f"{data_dir}/testingDataset.pkl", "rb"))
 test_data_temporal = pickle.load(open(f"{data_dir}/testingTemporalDataset.pkl", "rb"))
 test_data_temporal = {m: [[v for v in p if v[4] is not None] for p in test_data_temporal[m]] for m in test_data_temporal}
 test_data_temporal_paths = {m: set([v[0] for p in test_data_temporal[m] for v in p]) for m in test_data_temporal}
 test_data_static = {m: [[v] for v in test_data_static[m] if v[4] is not None and (m not in test_data_temporal_paths or v[0] not in test_data_temporal_paths[m])] for m in test_data_static}
 test_data = {m: test_data_static[m] + (test_data_temporal[m] if m in test_data_temporal else []) for m in tune_data_static}
+
 task_map = pickle.load(open(f"{data_dir}/taskMap.pkl", "rb"))
 
 model = vit_base(
@@ -173,4 +175,4 @@ for task in tune_data:
     print('\t', taskResults)
     
     allResults[task] = taskResults
-# pickle.dump(allResults, open(f"{save_dir}/{model_key}_downstreamResults.pkl", "wb"))
+pickle.dump(allResults, open(f"{save_dir}/{model_key}_downstreamResults.pkl", "wb"))

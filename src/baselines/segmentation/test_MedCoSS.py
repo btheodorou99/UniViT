@@ -4,13 +4,15 @@ import random
 import pickle
 import numpy as np
 from tqdm import tqdm
-from sklearn import metrics
 from src.config import Config
 import medpy.metric.binary as metrics
 from torch.utils.data import DataLoader
 from src.models.downstream import SegmentationModel
 from src.baselines.external.medcoss.model import MedCoSS
 from src.baselines.segmentation.data.image_dataset import ImageDataset
+
+import torch.multiprocessing
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 model_key = "medcoss"
 
@@ -20,7 +22,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 0
+cuda_num = 6
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
@@ -65,75 +67,109 @@ model.load_state_dict(
 model.eval()
 model.requires_grad_(False)
 
+bce_loss = torch.nn.BCELoss()    
+def dice_loss(pred, target, smooth=1e-5):
+    intersection = (pred * target).sum()
+    union = pred.sum() + target.sum()
+    dice = (2. * intersection + smooth) / (union + smooth)
+    return 1 - dice
+
 allResults = {}
 for task in valid_tasks:
     print(f"Downstream Evaluation on {task}")
     task_tune = tune_data[task]
-    task_tune_data = ImageDataset(task_tune, config, "cpu")
-    task_tune_loader = DataLoader(
-        task_tune_data,
-        batch_size=config.downstream_batch_size,
+    task_test = test_data[task]
+    task_data = task_tune + task_test
+    
+    global_data = ImageDataset(task_data, config, "cpu")
+    global_loader = DataLoader(
+        global_data,
+        batch_size=1,
         shuffle=True,
         num_workers=config.num_workers,
+        pin_memory=True,
+        persistent_workers=True
     )
-    task_test = test_data[task]
-    task_test_data = ImageDataset(task_test, config, "cpu")
-    task_test_loader = DataLoader(
-        task_test_data,
-        batch_size=config.downstream_batch_size,
-        shuffle=False,
-        num_workers=config.num_workers,
-    )
+    valid_img = [i for i, (_, _, img) in enumerate(global_loader) if img.max() > 0]
+    task_data = [task_data[i] for i in valid_img]
+    del global_data, global_loader, valid_img
+        
+    taskResults = {"Dice Coefficient": [], "95th Percentile Hausdorff Distance": []}
+    totData = len(task_data)
+    foldSize = totData // config.downstream_folds
+    for fold in tqdm(range(config.downstream_folds), desc=f"{task} Folds", leave=False):
+        task_tune = task_data[:fold*foldSize] + task_data[(fold+1)*foldSize:]
+        task_test = task_data[fold*foldSize:(fold+1)*foldSize]
     
-    bce_loss = torch.nn.BCELoss()
-    def dice_loss(pred, target):
-        pred2 = pred.contiguous().view(pred.shape[0], pred.shape[1], -1)
-        target2 = target.contiguous().view(target.shape[0], target.shape[1], -1)
-        num = torch.sum(torch.mul(pred2, target2), dim=-1)
-        den = torch.sum(pred2, dim=-1) + torch.sum(target2, dim=-1)
-        dice_score = (2 * num) / (den + 1)
-        dice_loss = 1 - dice_score.mean()
-        return dice_loss
+        task_tune_data = ImageDataset(task_tune, config, "cpu")
+        task_tune_loader = DataLoader(
+            task_tune_data,
+            batch_size=config.segmentation_batch_size,
+            shuffle=True,
+            num_workers=config.num_workers,
+            pin_memory=True,
+            persistent_workers=True
+        )
+        task_test_data = ImageDataset(task_test, config, "cpu")
+        task_test_loader = DataLoader(
+            task_test_data,
+            batch_size=4,#config.segmentation_batch_size,
+            shuffle=False,
+            num_workers=4,#config.num_workers,
+            pin_memory=True,
+            persistent_workers=True
+        )
+    
+        downstream = SegmentationModel(config.representation_size, config.patch_size, config.max_depth, slices=config.max_depth // config.depth_patch_size).to(device)
+        optimizer = torch.optim.Adam(list(model.parameters()) + list(downstream.parameters()), lr=config.downstream_lr)
+        for epoch in tqdm(
+            range(config.downstream_epochs), leave=False, desc=f"{task} Tuning"
+        ):
+            for batch_images, batch_dimensions, batch_labels in tqdm(
+                task_tune_loader, desc=f"{task} Tuning Epoch {epoch+1}", leave=False
+            ):
+                batch_images = batch_images.to(device)
+                batch_labels = batch_labels.to(device)
+                with torch.no_grad():
+                    representations = model.embed_patches(batch_images, batch_dimensions)
+                predictions = downstream(representations)
+                loss = bce_loss(predictions, batch_labels) + dice_loss(predictions, batch_labels)
+                loss.backward()
+                optimizer.step()
+                optimizer.zero_grad()
 
-    downstream = SegmentationModel(config.representation_size, config.patch_size, config.max_depth).to(device)
-    optimizer = torch.optim.Adam(downstream.parameters(), lr=config.downstream_lr)
-    for epoch in tqdm(
-        range(config.downstream_epochs), leave=False, desc=f"{task} Tuning"
-    ):
+        dice_values = []
+        hausdorff_values = []
         for batch_images, batch_dimensions, batch_labels in tqdm(
-            task_tune_loader, desc=f"{task} Tuning Epoch {epoch+1}", leave=False
+            task_test_loader, desc=f"{task} Testing", leave=False
         ):
             batch_images = batch_images.to(device)
-            batch_labels = batch_labels.to(device)
+            batch_labels = batch_labels.numpy()
             with torch.no_grad():
                 representations = model.embed_patches(batch_images, batch_dimensions)
-            predictions = downstream(representations)
-            loss = bce_loss(predictions, batch_labels) + dice_loss(predictions, batch_labels)
-            loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
-
-    dice_values = []
-    hausdorff_values = []
-    for batch_images, batch_dimensions, batch_labels in tqdm(
-        task_test_loader, desc=f"{task} Testing", leave=False
-    ):
-        batch_images = batch_images.to(device)
-        batch_labels = batch_labels.numpy()
-        with torch.no_grad():
-            representations = model.embed_patches(batch_images, batch_dimensions)
-            predictions = downstream(representations)
-            predictions = (predictions > 0.5).cpu().numpy()
-        for i in range(len(predictions)):
-            if batch_labels[i].max() == 0:
-                continue
-            
-            dice_values.append(metrics.dc(predictions[i], batch_labels[i]))
-            hausdorff_values.append(metrics.hd(predictions[i], batch_labels[i]))
-
-    dice_score = np.mean(dice_values)
-    hausdorff_score = np.mean(hausdorff_values)
-    taskResults = {"Dice Coefficient": dice_score, "95th Percentile Hausdorff Distance": hausdorff_score}
+                predictions = downstream(representations)
+                predictions = (predictions > 0.5).cpu().numpy()
+                
+            for i in range(len(predictions)):
+                if batch_labels[i].max() == 0:
+                    continue
+                elif predictions[i].max() == 0:
+                    dice_values.append(0)
+                    hausdorff_values.append(1000)
+                    continue
+                
+                dice_values.append(metrics.dc(predictions[i], batch_labels[i]))
+                hausdorff_values.append(metrics.hd(predictions[i], batch_labels[i]))
+                
+        dice_score = np.mean(dice_values)
+        hausdorff_score = np.mean(hausdorff_values)
+        taskResults['Dice Coefficient'].append(dice_score)
+        taskResults['95th Percentile Hausdorff Distance'].append(hausdorff_score)
+        
+    taskResults['Dice Coefficient PM'] = round(np.std(taskResults['Dice Coefficient']) / np.sqrt(config.downstream_folds), 5)
+    taskResults['Dice Coefficient'] = round(np.mean(taskResults['Dice Coefficient']), 5)
+    taskResults['95th Percentile Hausdorff Distance PM'] = round(np.std(taskResults['95th Percentile Hausdorff Distance']) / np.sqrt(config.downstream_folds), 5)
+    taskResults['95th Percentile Hausdorff Distance'] = round(np.mean(taskResults['95th Percentile Hausdorff Distance']), 5)
     print('\t', taskResults)
     allResults[task] = taskResults
 pickle.dump(allResults, open(f"{save_dir}/{model_key}_segmentationResults.pkl", "wb"))
