@@ -275,18 +275,18 @@ class SSLMetaArch(nn.Module):
         if do_ibot and not self.ibot_separate_head:
             student_global_masked_patch_tokens_after_head = outputs_list.pop(0).squeeze(0)[:n_masked_patches]
 
-        # if n_local_crops > 0:
-        #     dino_local_crops_loss = self.dino_loss(
-        #         student_output_list=student_local_cls_tokens_after_head.chunk(n_local_crops),
-        #         teacher_out_softmaxed_centered_list=teacher_dino_softmaxed_centered_list,
-        #     ) / (n_global_crops_loss_terms + n_local_crops_loss_terms)
+        if n_local_crops > 0:
+            dino_local_crops_loss = self.dino_loss(
+                student_output_list=student_local_cls_tokens_after_head.chunk(n_local_crops),
+                teacher_out_softmaxed_centered_list=teacher_dino_softmaxed_centered_list,
+            ) / (n_global_crops_loss_terms + n_local_crops_loss_terms)
 
-        #     # accumulate loss
-        #     if torch.isnan(dino_local_crops_loss).any():
-        #         logger.warning("DINO local loss is NaN")
-        #     else:
-        #         loss_accumulator += self.dino_loss_weight * dino_local_crops_loss
-        #         loss_dict["dino_local_crops_loss"] = dino_local_crops_loss
+            # accumulate loss
+            if torch.isnan(dino_local_crops_loss).any():
+                logger.warning("DINO local loss is NaN")
+            else:
+                loss_accumulator += self.dino_loss_weight * dino_local_crops_loss
+                loss_dict["dino_local_crops_loss"] = dino_local_crops_loss
 
         # process global crops
         loss_scales = 2  # this is here since we process global crops together

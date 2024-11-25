@@ -16,7 +16,7 @@ ibot:
   head_hidden_dim: 2048
 train:
   batch_size_per_gpu: 64
-  dataset_path: /shared/eng/bpt3/data/UniViT/data/trainingDataset.pkl
+  dataset_path: /shared/eng/bpt3/data/UniViT/data/trainingDataset_processed.pkl
   saveckp_freq: 1
   seed: 0
   num_workers: 4

@@ -1,81 +1,47 @@
-DINOv2 3D:
-    Downstream Evaluation on BraTS-MEN-RT
-        {'Dice Coefficient': 0.08026, '95th Percentile Hausdorff Distance': 165.17216, 'Dice Coefficient PM': 0.01171, '95th Percentile Hausdorff Distance PM': 26.78216}
-    Downstream Evaluation on BraTS-PED
-        {'Dice Coefficient': 0.21355, '95th Percentile Hausdorff Distance': 52.48704, 'Dice Coefficient PM': 0.02042, '95th Percentile Hausdorff Distance PM': 2.29272}
+iBOT:
     Downstream Evaluation on BraTS-GLI
-        {'Dice Coefficient': 0.2637, '95th Percentile Hausdorff Distance': 86.49296, 'Dice Coefficient PM': 0.01224, '95th Percentile Hausdorff Distance PM': 1.06926}
+        {'Legacy_Dice': 0.47115809144893733, 'Legacy_Dice PM': 0.014554975120949368, 'Legacy_HD95': 49.786263955945046, 'Legacy_HD95 PM': 2.0689986714537745, 'LesionWise_Score_Dice': 0.10250173369060545, 'LesionWise_Score_Dice PM': 0.006574387566057428, 'LesionWise_Score_HD95': 297.74342359778586, 'LesionWise_Score_HD95 PM': 4.131436674943544}
     Downstream Evaluation on BraTS-GoAT
-        {'Dice Coefficient': 0.38851, '95th Percentile Hausdorff Distance': 65.47176, 'Dice Coefficient PM': 0.01272, '95th Percentile Hausdorff Distance PM': 1.08381}
+        {'Legacy_Dice': 0.5567437365619867, 'Legacy_Dice PM': 0.01603754978404693, 'Legacy_HD95': 38.8851979351641, 'Legacy_HD95 PM': 1.608997359035873, 'LesionWise_Score_Dice': 0.161891857550349, 'LesionWise_Score_Dice PM': 0.010629151366224587, 'LesionWise_Score_HD95': 275.23131183247295, 'LesionWise_Score_HD95 PM': 5.871103775481387}
+    Downstream Evaluation on BraTS-MEN-RT
+        {'Legacy_Dice': 0.222793484885941, 'Legacy_Dice PM': 0.035454649434555514, 'Legacy_HD95': 82.02162243007669, 'Legacy_HD95 PM': 12.110333574452085, 'LesionWise_Score_Dice': 0.1663830116901646, 'LesionWise_Score_Dice PM': 0.029941515563667215, 'LesionWise_Score_HD95': 226.34768111898862, 'LesionWise_Score_HD95 PM': 19.784171093044385}
+    Downstream Evaluation on BraTS-PED
+        {'Legacy_Dice': 0.23728917625237053, 'Legacy_Dice PM': 0.03403433018905525, 'Legacy_HD95': 46.80017144836768, 'Legacy_HD95 PM': 2.5170971354768295, 'LesionWise_Score_Dice': 0.05106508658135382, 'LesionWise_Score_Dice PM': 0.010292896669276432, 'LesionWise_Score_HD95': 317.3916274762551, 'LesionWise_Score_HD95 PM': 5.721897644486645}
     Downstream Evaluation on BraTS-MET
-        {'Dice Coefficient': 0.11045, '95th Percentile Hausdorff Distance': 59.49547, 'Dice Coefficient PM': 0.00871, '95th Percentile Hausdorff Distance PM': 1.34094}
+        {'Legacy_Dice': 0.2588187523495151, 'Legacy_Dice PM': 0.026416945608068326, 'Legacy_HD95': 52.561767584309024, 'Legacy_HD95 PM': 7.188250136228413, 'LesionWise_Score_Dice': 0.11711037795173039, 'LesionWise_Score_Dice PM': 0.01697757373743288, 'LesionWise_Score_HD95': 261.2240813642859, 'LesionWise_Score_HD95 PM': 11.331010669825973}
 
-
-
-DINOv2 2D:
-    Downstream Evaluation on BraTS-MEN-RT
-        {'Dice Coefficient': 0.05188, '95th Percentile Hausdorff Distance': 212.76757, 'Dice Coefficient PM': 0.0083, '95th Percentile Hausdorff Distance PM': 27.38252}
-    Downstream Evaluation on BraTS-PED
-        {'Dice Coefficient': 0.17356, '95th Percentile Hausdorff Distance': 46.70098, 'Dice Coefficient PM': 0.01708, '95th Percentile Hausdorff Distance PM': 2.39286}
+DINOv2:
     Downstream Evaluation on BraTS-GLI
-        {'Dice Coefficient': 0.21767, '95th Percentile Hausdorff Distance': 84.85535, 'Dice Coefficient PM': 0.00634, '95th Percentile Hausdorff Distance PM': 0.86945}
+        {'Legacy_Dice': 0.440152779489359, 'Legacy_Dice PM': 0.014434498591626757, 'Legacy_HD95': 50.46352882111467, 'Legacy_HD95 PM': 1.8348805302487021, 'LesionWise_Score_Dice': 0.0940343952043439, 'LesionWise_Score_Dice PM': 0.007340767059796283, 'LesionWise_Score_HD95': 303.30465663596163, 'LesionWise_Score_HD95 PM': 4.420394894196565}
     Downstream Evaluation on BraTS-GoAT
-        {'Dice Coefficient': 0.35478, '95th Percentile Hausdorff Distance': 67.97018, 'Dice Coefficient PM': 0.00993, '95th Percentile Hausdorff Distance PM': 1.00804}
-    Downstream Evaluation on BraTS-MET                                                                                                                                                           | 1/10 [1:08:44<10:18:43, 4124.86s/it]
-        {'Dice Coefficient': 0.11108, '95th Percentile Hausdorff Distance': 59.94098, 'Dice Coefficient PM': 0.0073, '95th Percentile Hausdorff Distance PM': 1.14419}
-
-
-
-iBOT 3D:
+        {'Legacy_Dice': 0.5274804548360269, 'Legacy_Dice PM': 0.01604426890809199, 'Legacy_HD95': 42.40589548890668, 'Legacy_HD95 PM': 1.5019579980528892, 'LesionWise_Score_Dice': 0.10988651622713788, 'LesionWise_Score_Dice PM': 0.006399470744385177, 'LesionWise_Score_HD95': 305.0072739704633, 'LesionWise_Score_HD95 PM': 3.702789384777131}
     Downstream Evaluation on BraTS-MEN-RT
-        {'Dice Coefficient': 0.21729, '95th Percentile Hausdorff Distance': 249.57569, 'Dice Coefficient PM': 0.02744, '95th Percentile Hausdorff Distance PM': 34.39354}
+        {'Legacy_Dice': 0.17319101883243024, 'Legacy_Dice PM': 0.026814329533272372, 'Legacy_HD95': 63.56010108297337, 'Legacy_HD95 PM': 3.273247245470534, 'LesionWise_Score_Dice': 0.10360915349328832, 'LesionWise_Score_Dice PM': 0.020570031760687172, 'LesionWise_Score_HD95': 268.8581840139369, 'LesionWise_Score_HD95 PM': 15.116360341371806}
     Downstream Evaluation on BraTS-PED
-        {'Dice Coefficient': 0.20592, '95th Percentile Hausdorff Distance': 54.66469, 'Dice Coefficient PM': 0.02294, '95th Percentile Hausdorff Distance PM': 2.36685}
-    Downstream Evaluation on BraTS-GLI
-        {'Dice Coefficient': 0.35147, '95th Percentile Hausdorff Distance': 82.94, 'Dice Coefficient PM': 0.01326, '95th Percentile Hausdorff Distance PM': 1.11185}
-    Downstream Evaluation on BraTS-GoAT
-        {'Dice Coefficient': 0.49139, '95th Percentile Hausdorff Distance': 64.41141, 'Dice Coefficient PM': 0.00763, '95th Percentile Hausdorff Distance PM': 0.79042}
+        {'Legacy_Dice': 0.32008585365066794, 'Legacy_Dice PM': 0.03643530791698134, 'Legacy_HD95': 32.214983554067956, 'Legacy_HD95 PM': 2.237289872740639, 'LesionWise_Score_Dice': 0.14177490445503296, 'LesionWise_Score_Dice PM': 0.029113142928776613, 'LesionWise_Score_HD95': 244.9574701106723, 'LesionWise_Score_HD95 PM': 17.81553926116746}
     Downstream Evaluation on BraTS-MET
-        {'Dice Coefficient': 0.17987, '95th Percentile Hausdorff Distance': 90.31438, 'Dice Coefficient PM': 0.01459, '95th Percentile Hausdorff Distance PM': 14.65875}
-
-
-
-iBOT 2D:
-    Downstream Evaluation on BraTS-MEN-RT
-        {'Dice Coefficient': 0.09391, '95th Percentile Hausdorff Distance': 375.86148, 'Dice Coefficient PM': 0.01339, '95th Percentile Hausdorff Distance PM': 36.12161}
-    Downstream Evaluation on BraTS-PED
-        {'Dice Coefficient': 0.21016, '95th Percentile Hausdorff Distance': 58.70284, 'Dice Coefficient PM': 0.01924, '95th Percentile Hausdorff Distance PM': 11.85999}
-    Downstream Evaluation on BraTS-GLI
-        {'Dice Coefficient': 0.23048, '95th Percentile Hausdorff Distance': 75.79379, 'Dice Coefficient PM': 0.0096, '95th Percentile Hausdorff Distance PM': 0.93259}
-    Downstream Evaluation on BraTS-GoAT
-        {'Dice Coefficient': 0.37434, '95th Percentile Hausdorff Distance': 60.5443, 'Dice Coefficient PM': 0.00842, '95th Percentile Hausdorff Distance PM': 1.1991}
-    Downstream Evaluation on BraTS-MET
-        {'Dice Coefficient': 0.07847, '95th Percentile Hausdorff Distance': 76.50332, 'Dice Coefficient PM': 0.00779, '95th Percentile Hausdorff Distance PM': 6.00239}
-
-
+        {'Legacy_Dice': 0.20796170283603363, 'Legacy_Dice PM': 0.022269490660971756, 'Legacy_HD95': 42.39742343459952, 'Legacy_HD95 PM': 2.8423680975121135, 'LesionWise_Score_Dice': 0.07913373373978294, 'LesionWise_Score_Dice PM': 0.010254933326701179, 'LesionWise_Score_HD95': 283.42337208296334, 'LesionWise_Score_HD95 PM': 9.799850802438124}
 
 MedCoSS:
-    Downstream Evaluation on BraTS-MEN-RT
-        {'Dice Coefficient': 0.04715, '95th Percentile Hausdorff Distance': 295.11962, 'Dice Coefficient PM': 0.01354, '95th Percentile Hausdorff Distance PM': 43.64029}
-    Downstream Evaluation on BraTS-PED
-        {'Dice Coefficient': 0.36239, '95th Percentile Hausdorff Distance': 22.14031, 'Dice Coefficient PM': 0.01064, '95th Percentile Hausdorff Distance PM': 1.0169}
     Downstream Evaluation on BraTS-GLI
-        {'Dice Coefficient': 0.19794, '95th Percentile Hausdorff Distance': 74.99154, 'Dice Coefficient PM': 0.00701, '95th Percentile Hausdorff Distance PM': 1.10661}
+        {'Legacy_Dice': 0.34363397265562606, 'Legacy_Dice PM': 0.014810480643133481, 'Legacy_HD95': 50.956272646892785, 'Legacy_HD95 PM': 1.7664664926033045, 'LesionWise_Score_Dice': 0.10688051952788925, 'LesionWise_Score_Dice PM': 0.006186019046898938, 'LesionWise_Score_HD95': 273.81731007496563, 'LesionWise_Score_HD95 PM': 4.452146561536224}
     Downstream Evaluation on BraTS-GoAT
-        {'Dice Coefficient': 0.22785, '95th Percentile Hausdorff Distance': 57.84716, 'Dice Coefficient PM': 0.00394, '95th Percentile Hausdorff Distance PM': 0.66215}
+        {'Legacy_Dice': 0.34682691933411075, 'Legacy_Dice PM': 0.014718576209193063, 'Legacy_HD95': 50.429905002486365, 'Legacy_HD95 PM': 1.2652412990634194, 'LesionWise_Score_Dice': 0.08634773562070946, 'LesionWise_Score_Dice PM': 0.006048415782863373, 'LesionWise_Score_HD95': 302.1090173664764, 'LesionWise_Score_HD95 PM': 3.3613167272119346}
+    Downstream Evaluation on BraTS-MEN-RT
+        {'Legacy_Dice': 0.13396577844401653, 'Legacy_Dice PM': 0.029602789964007163, 'Legacy_HD95': 59.72031774062013, 'Legacy_HD95 PM': 6.040949890350997, 'LesionWise_Score_Dice': 0.08362215996332299, 'LesionWise_Score_Dice PM': 0.020616141811546713, 'LesionWise_Score_HD95': 301.4702749446473, 'LesionWise_Score_HD95 PM': 14.350150800247311}
+    Downstream Evaluation on BraTS-PED
+        {'Legacy_Dice': 0.32124370930200646, 'Legacy_Dice PM': 0.0353064170455275, 'Legacy_HD95': 23.261791865373613, 'Legacy_HD95 PM': 2.520930629191724, 'LesionWise_Score_Dice': 0.3031503899048113, 'LesionWise_Score_Dice PM': 0.03390664004726176, 'LesionWise_Score_HD95': 68.86863535471892, 'LesionWise_Score_HD95 PM': 19.008386223861102}
     Downstream Evaluation on BraTS-MET
-        {'Dice Coefficient': 0.08222, '95th Percentile Hausdorff Distance': 55.92536, 'Dice Coefficient PM': 0.00861, '95th Percentile Hausdorff Distance PM': 1.29788}
-
-
+        {'Legacy_Dice': 0.08931935596098543, 'Legacy_Dice PM': 0.014030278316971742, 'Legacy_HD95': 47.230099312574474, 'Legacy_HD95 PM': 1.9804101966558, 'LesionWise_Score_Dice': 0.02890609898756658, 'LesionWise_Score_Dice PM': 0.004480468964486371, 'LesionWise_Score_HD95': 264.16112692621704, 'LesionWise_Score_HD95 PM': 7.588059771056547}
 
 UniViT:
-    Downstream Evaluation on BraTS-MEN-RT
-        {'Dice Coefficient': 0.10201, '95th Percentile Hausdorff Distance': 282.02839, 'Dice Coefficient PM': 0.01458, '95th Percentile Hausdorff Distance PM': 38.26416}
-    Downstream Evaluation on BraTS-PED
-        {'Dice Coefficient': 0.29882, '95th Percentile Hausdorff Distance': 32.47127, 'Dice Coefficient PM': 0.02335, '95th Percentile Hausdorff Distance PM': 2.07376}
     Downstream Evaluation on BraTS-GLI
-        {'Dice Coefficient': 0.21518, '95th Percentile Hausdorff Distance': 79.7356, 'Dice Coefficient PM': 0.0069, '95th Percentile Hausdorff Distance PM': 1.41114}
+        {'Legacy_Dice': 0.39625060979493226, 'Legacy_Dice PM': 0.015513963447586453, 'Legacy_HD95': 50.5349161074477, 'Legacy_HD95 PM': 2.044165956441917, 'LesionWise_Score_Dice': 0.1302399177026814, 'LesionWise_Score_Dice PM': 0.00940492961031502, 'LesionWise_Score_HD95': 264.02788934689727, 'LesionWise_Score_HD95 PM': 6.238845810697823}
     Downstream Evaluation on BraTS-GoAT
-        {'Dice Coefficient': 0.29341, '95th Percentile Hausdorff Distance': 63.92433, 'Dice Coefficient PM': 0.01019, '95th Percentile Hausdorff Distance PM': 1.74837}
+        {'Legacy_Dice': 0.4857354910500363, 'Legacy_Dice PM': 0.016482737915672997, 'Legacy_HD95': 38.4306700529323, 'Legacy_HD95 PM': 1.7379532652431973, 'LesionWise_Score_Dice': 0.21207985678225397, 'LesionWise_Score_Dice PM': 0.01457888720980623, 'LesionWise_Score_HD95': 234.99602246672924, 'LesionWise_Score_HD95 PM': 8.26983360142135}
+    Downstream Evaluation on BraTS-MEN-RT
+        {'Legacy_Dice': 0.12957437289868262, 'Legacy_Dice PM': 0.028985008040570026, 'Legacy_HD95': 58.98145430349577, 'Legacy_HD95 PM': 5.830374845375144, 'LesionWise_Score_Dice': 0.07608595436912009, 'LesionWise_Score_Dice PM': 0.02019929271179806, 'LesionWise_Score_HD95': 309.23873305355556, 'LesionWise_Score_HD95 PM': 12.662174241096121}
+    Downstream Evaluation on BraTS-PED
+        {'Legacy_Dice': 0.3309688454257245, 'Legacy_Dice PM': 0.04959887218775993, 'Legacy_HD95': 23.560433369902356, 'Legacy_HD95 PM': 2.7388873091126995, 'LesionWise_Score_Dice': 0.2875192457747762, 'LesionWise_Score_Dice PM': 0.048708546751414686, 'LesionWise_Score_HD95': 143.6008205158945, 'LesionWise_Score_HD95 PM': 25.556504603185594}
     Downstream Evaluation on BraTS-MET
-        {'Dice Coefficient': 0.08881, '95th Percentile Hausdorff Distance': 65.14099, 'Dice Coefficient PM': 0.0091, '95th Percentile Hausdorff Distance PM': 5.64222}
+        {'Legacy_Dice': 0.1403281273128154, 'Legacy_Dice PM': 0.019701903330714247, 'Legacy_HD95': 46.09721361055511, 'Legacy_HD95 PM': 2.324767166554833, 'LesionWise_Score_Dice': 0.04202352324816065, 'LesionWise_Score_Dice PM': 0.00900303513652102, 'LesionWise_Score_HD95': 305.1621884197551, 'LesionWise_Score_HD95 PM': 7.114513985923852}

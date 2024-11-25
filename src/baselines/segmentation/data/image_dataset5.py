@@ -74,7 +74,7 @@ class ImageDataset(Dataset):
         chosenDim = (self.config.segmentation_depth, self.config.max_height, self.config.max_width)
         dimension_tensor[0] = 1
         dimension_tensor[1] = self.config.max_depth
-        dimension_tensor[2] = self.config.max_height
+        dimension_tensor[2] = self.config.depth_patch_size
         dimension_tensor[3] = self.config.max_width
         path, _, _, _, labels = p[0]
         
@@ -85,6 +85,8 @@ class ImageDataset(Dataset):
         image_tensor = img.unsqueeze(1).float()
         padding_time = self.config.max_time - 1
         image_tensor = F.pad(image_tensor, (0, 0, 0, 0, 0, 0, 0, 0, 0, padding_time, 0, 0))
+        # mask out all but first depth_patch_size
+        image_tensor[:, :, self.config.depth_patch_size:] = 0
         image_tensor = image_tensor.to(self.device)
         dimension_tensor = dimension_tensor.unsqueeze(0).repeat(image_tensor.shape[0], 1)
         dimension_tensor[-(self.config.max_depth - self.config.depth_patch_size // 2 - 1):, 1] = torch.tensor([i for i in reversed(range(self.config.depth_patch_size // 2 + 1, self.config.max_depth))])

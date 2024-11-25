@@ -3,11 +3,11 @@ class Config(object):
         self,
         max_height=224,
         max_width=224,
-        max_depth=10,
+        max_depth=21,
         max_time=5,
         num_channels=3,
         patch_size=14,
-        depth_patch_size=5,
+        depth_patch_size=7,
         time_patch_size=5,
         representation_size=768,
         num_layers=12,
@@ -29,9 +29,10 @@ class Config(object):
         dataset_size=None,
         tot_steps=100000,
         num_workers=4,
-        downstream_epochs=100,
+        downstream_epochs=50,
         downstream_batch_size=32,
-        segmentation_batch_size=4,
+        segmentation_batch_size=1,
+        segmentation_depth=72,
         downstream_lr=1e-4,
         downstream_folds=10,
     ):
@@ -65,6 +66,7 @@ class Config(object):
         self.downstream_epochs = downstream_epochs
         self.downstream_batch_size = downstream_batch_size
         self.segmentation_batch_size = segmentation_batch_size
+        self.segmentation_depth = segmentation_depth
         self.downstream_lr = downstream_lr
         self.downstream_folds = downstream_folds
 

@@ -1,9 +1,7 @@
 import torch
-import random
 import numpy as np
 from PIL import Image
 import torch.nn.functional as F
-from torchvision import transforms
 from torch.utils.data import Dataset
 
 SEGMENTATION_THRESHOLD = 0.05
@@ -41,7 +39,7 @@ class ImageDataset(Dataset):
                 img.permute(1,0,2,3).unsqueeze(0),
                 size=(self.image_depth, img.shape[2], img.shape[3]),
                 mode="trilinear",
-                align_corners=False,
+                align_corners=True,
             ).squeeze(0).permute(1,0,2,3)
         else:
             raise ValueError("Invalid 3D image format")
@@ -56,12 +54,6 @@ class ImageDataset(Dataset):
             img = img[:, :, img.shape[2] // 2]  # Take middle depth for 3D images
             img = (img * 255).astype(np.uint8)
             img = Image.fromarray(img).convert("RGB")
-        elif (
-            image_path.endswith(".jpg")
-            or image_path.endswith(".png")
-            or image_path.endswith(".tif")
-        ):
-            img = Image.open(image_path).convert("RGB")
         else:
             raise ValueError("Invalid image format")
 
@@ -75,15 +67,6 @@ class ImageDataset(Dataset):
                 img = img[:, :, :, 0]
             img = img.permute(2, 0, 1)
             img = img.unsqueeze(1).repeat(1, 3, 1, 1)
-        elif (
-            image_path.endswith(".jpg")
-            or image_path.endswith(".png")
-            or image_path.endswith(".tif")
-        ):
-            img = Image.open(image_path)
-            if channels:
-                img = img.convert("RGB")
-            img = self.transform(img).unsqueeze(0)
         else:
             raise ValueError("Invalid image format")
 
@@ -126,6 +109,6 @@ class ImageDataset(Dataset):
             else self.load_image(path)
         )
         
-        chosenDim = (self.config.max_depth, self.config.max_height, self.config.max_width)
+        chosenDim = (self.config.segmentation_depth, self.config.max_height, self.config.max_width)
         label_tensor = (self.load_image_labels(labels, chosenDim, channels=False) > SEGMENTATION_THRESHOLD).float()
         return image_tensor, label_tensor

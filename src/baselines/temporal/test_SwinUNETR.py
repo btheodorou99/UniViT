@@ -24,7 +24,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 2
+cuda_num = 0
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
@@ -44,19 +44,19 @@ valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t]]
 tune_data = {task: tune_data[task] for task in valid_tasks}
 test_data = {task: test_data[task] for task in valid_tasks}
 
-temporal_tasks = ['ADNI PET CN', 'ADNI MRI CN', 'ACDC Abnormality']
-tune_data['ADNI PET CN'] = [[(v[0], v[1], v[2], v[3], 1 if v[4] > 0 else 0) for v in p] for p in tune_data['ADNI PET']]
-test_data['ADNI PET CN'] = [[(v[0], v[1], v[2], v[3], 1 if v[4] > 0 else 0) for v in p] for p in test_data['ADNI PET']]
-task_map['ADNI PET CN'] = 'Multi-Class Classification'
-tune_data['ADNI MRI CN'] = [[(v[0], v[1], v[2], v[3], 1 if v[4] > 0 else 0) for v in p] for p in tune_data['ADNI MRI']]
-test_data['ADNI MRI CN'] = [[(v[0], v[1], v[2], v[3], 1 if v[4] > 0 else 0) for v in p] for p in test_data['ADNI MRI']]
-task_map['ADNI MRI CN'] = 'Multi-Class Classification'
+cci_map = pd.read_csv(f"{data_dir}/CCI.csv")
+cci_map = {row['PTID']: sum(row[f'CCI{i}'] for i in range(1,21)) for _, row in cci_map.iterrows()}
+cci_values = [v for v in cci_map.values() if v == v]
+cci_threshold = np.percentile(cci_values, 75)
+cci_map = {k: 1 if v > cci_threshold else 0 for k, v in cci_map.items()}
+
+temporal_tasks = ['ADNI PET CCI', 'ACDC Abnormality']
+tune_data['ADNI PET CCI'] = [[(v[0], v[1], v[2], v[3], cci_map[v[0].split('/')[-1].split('--')[0]]) for v in p] for p in tune_data['ADNI PET'] if p[0][0].split('/')[-1].split('--')[0] in cci_map]
+test_data['ADNI PET CCI'] = [[(v[0], v[1], v[2], v[3], cci_map[v[0].split('/')[-1].split('--')[0]]) for v in p] for p in test_data['ADNI PET'] if p[0][0].split('/')[-1].split('--')[0] in cci_map]
+task_map['ADNI PET CCI'] = 'Multi-Class Classification'
 tune_data['ACDC Abnormality'] = [[(v[0], v[1], v[2], v[3], 1 if v[4] > 0 else 0) for v in p] for p in tune_data['ACDC']]
 test_data['ACDC Abnormality'] = [[(v[0], v[1], v[2], v[3], 1 if v[4] > 0 else 0) for v in p] for p in test_data['ACDC']]
 task_map['ACDC Abnormality'] = 'Multi-Class Classification'
-tune_data['MIMIC-CXR Pneumothorax'] = [[(v[0], v[1], v[2], v[3], v[4][5]) for v in p] for p in tune_data['MIMIC-CXR']]
-test_data['MIMIC-CXR Pneumothorax'] = [[(v[0], v[1], v[2], v[3], v[4][5]) for v in p] for p in test_data['MIMIC-CXR']]
-task_map['MIMIC-CXR Pneumothorax'] = 'Multi-Class Classification'
 
 config.in_channels = 1
 config.feature_size = 48
@@ -64,9 +64,20 @@ config.dropout_path_rate = 0.0
 config.use_checkpoint = False
 config.spatial_dims = 3
 
+def _clean_state_dict(state_dict):
+    new_state_dict = {}
+    for key, value in state_dict.items():
+        if key.startswith('module.'):
+            new_key = key[len('module.'):]  # Remove the 'module.' prefix
+            new_state_dict[new_key] = value
+        else:
+            new_state_dict[key] = value  # Otherwise, keep the key as it is
+            
+    return new_state_dict
+
 model = model = SSLHead(config)
 state_dict = torch.load(f"{save_dir}/{model_key}.pt", map_location='cpu')['state_dict']
-model.load_state_dict(state_dict)
+model.load_state_dict(_clean_state_dict(state_dict))
 model.eval()
 model.requires_grad_(False)
 model.to(device)
@@ -78,7 +89,7 @@ for task in temporal_tasks:
     
     task_tune = tune_data[task]
     task_test = test_data[task]
-    task_data = task_tune + task_test
+    task_data = task_test + task_tune
     label = task_tune[0][0][4]
     if isinstance(label, list):
         label_size = len(label)
@@ -121,6 +132,8 @@ for task in temporal_tasks:
         y_train = np.array(y[:fold * foldSize] + y[(fold + 1) * foldSize:])
         X_test = np.array(X[fold * foldSize:(fold + 1) * foldSize])
         y_test = np.array(y[fold * foldSize:(fold + 1) * foldSize])
+        if len(set(y_test.flatten())) == 1:
+            continue
     
         downstream = LogisticRegression(max_iter=10000)
         if taskType == "Multi-Label Classification":

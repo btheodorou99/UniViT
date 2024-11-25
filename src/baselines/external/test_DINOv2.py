@@ -24,14 +24,13 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 7
+cuda_num = 0
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
 
 data_dir = "/shared/eng/bpt3/data/UniViT/data"
 save_dir = "/shared/eng/bpt3/data/UniViT/save"
-# save_dir = "/srv/local/data/bpt3/UniViT/save"
 tune_data_static = pickle.load(open(f"{data_dir}/tuningDataset.pkl", "rb"))
 tune_data_temporal = pickle.load(open(f"{data_dir}/tuningTemporalDataset.pkl", "rb"))
 tune_data_temporal = {m: [[v for v in p if v[4] is not None] for p in tune_data_temporal[m]] for m in tune_data_temporal}

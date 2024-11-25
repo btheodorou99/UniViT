@@ -18,6 +18,20 @@ class ImageDataset(Dataset):
                 transforms.ToTensor(),
             ]
         )
+        
+        self.unroll_idx = []
+        max_num = self.config.segmentation_depth + (2 * (self.config.depth_patch_size // 2)) - (config.max_depth - 1)
+        up_num = 0
+        down_num = max_num - 1
+        while up_num < down_num:
+            for i in range(self.config.depth_patch_size):
+                if up_num + i <= down_num - i:
+                    self.unroll_idx.append(up_num+i)
+                    if up_num+i != down_num-i:
+                        self.unroll_idx.append(down_num-i)
+            up_num += 1 + ((self.depth_ratio - 1) * self.config.depth_patch_size)
+            down_num -= 1 + ((self.depth_ratio - 1) * self.config.depth_patch_size)
+        self.unroll_idx = torch.tensor(sorted(set(self.unroll_idx)))
 
     def __len__(self):
         return len(self.dataset)
@@ -79,15 +93,16 @@ class ImageDataset(Dataset):
         path, _, _, _, labels = p[0]
         
         img = self.load_image(path, chosenDim)
-        img = F.pad(img, (0, 0, 0, 0, 0, 0, self.config.depth_patch_size // 2, self.config.max_depth - self.config.depth_patch_size // 2 - 1))
+        padding_depth = self.config.depth_patch_size // 2
+        img = F.pad(img, (0, 0, 0, 0, 0, 0, padding_depth, padding_depth))
         img = img.unfold(dimension=0, size=self.config.max_depth, step=1).permute(0, 4, 1, 2, 3)
+        img = img[self.unroll_idx]
 
         image_tensor = img.unsqueeze(1).float()
         padding_time = self.config.max_time - 1
         image_tensor = F.pad(image_tensor, (0, 0, 0, 0, 0, 0, 0, 0, 0, padding_time, 0, 0))
         image_tensor = image_tensor.to(self.device)
         dimension_tensor = dimension_tensor.unsqueeze(0).repeat(image_tensor.shape[0], 1)
-        dimension_tensor[-(self.config.max_depth - self.config.depth_patch_size // 2 - 1):, 1] = torch.tensor([i for i in reversed(range(self.config.depth_patch_size // 2 + 1, self.config.max_depth))])
 
         label_tensor = (self.load_image(labels, chosenDim, channels=False) > SEGMENTATION_THRESHOLD).float()
         return image_tensor, dimension_tensor, label_tensor

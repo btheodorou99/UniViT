@@ -18,7 +18,7 @@ class SSLHead(nn.Module):
     def __init__(self, args, upsample="vae", dim=768):
         super(SSLHead, self).__init__()
         patch_size = (2, 2, 2)
-        window_size = (5, 7, 7)
+        window_size = (7, 7, 7)
         self.swinViT = SwinViT(
             in_chans=args.in_channels,
             embed_dim=args.feature_size,
@@ -44,8 +44,8 @@ class SSLHead(nn.Module):
             self.conv = nn.ConvTranspose3d(dim, args.in_channels, kernel_size=(32, 32, 32), stride=(32, 32, 32))
         elif upsample == "deconv":
             self.conv = nn.Sequential(
-                nn.ConvTranspose3d(dim, dim // 2, kernel_size=(2, 2, 2), stride=(2, 2, 2)),  # scale by (2, 2, 2)
-                nn.ConvTranspose3d(dim // 2, dim // 4, kernel_size=(5, 2, 2), stride=(5, 2, 2)),  # scale by (5, 2, 2)
+                nn.ConvTranspose3d(dim, dim // 2, kernel_size=(3, 2, 2), stride=(3, 2, 2)),  # scale by (2, 2, 2)
+                nn.ConvTranspose3d(dim // 2, dim // 4, kernel_size=(7, 2, 2), stride=(7, 2, 2)),  # scale by (5, 2, 2)
                 nn.ConvTranspose3d(dim // 4, dim // 8, kernel_size=(1, 2, 2), stride=(1, 2, 2)),  # scale by (1, 2, 2)
                 nn.ConvTranspose3d(dim // 8, dim // 16, kernel_size=(1, 2, 2), stride=(1, 2, 2)),  # scale by (1, 2, 2)
                 nn.ConvTranspose3d(dim // 16, args.in_channels, kernel_size=(1, 2, 2), stride=(1, 2, 2)),  # scale by (1, 2, 2)
@@ -55,11 +55,11 @@ class SSLHead(nn.Module):
                 nn.Conv3d(dim, dim // 2, kernel_size=3, stride=1, padding=1),
                 nn.InstanceNorm3d(dim // 2),
                 nn.LeakyReLU(),
-                nn.Upsample(scale_factor=2, mode="trilinear", align_corners=False),
+                nn.Upsample(scale_factor=(3,2,2), mode="trilinear", align_corners=False),
                 nn.Conv3d(dim // 2, dim // 4, kernel_size=3, stride=1, padding=1),
                 nn.InstanceNorm3d(dim // 4),
                 nn.LeakyReLU(),
-                nn.Upsample(scale_factor=(5,2,2), mode="trilinear", align_corners=False),
+                nn.Upsample(scale_factor=(7,2,2), mode="trilinear", align_corners=False),
                 nn.Conv3d(dim // 4, dim // 8, kernel_size=3, stride=1, padding=1),
                 nn.InstanceNorm3d(dim // 8),
                 nn.LeakyReLU(),

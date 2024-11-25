@@ -269,7 +269,7 @@ def train_ibot(args):
     student = nn.parallel.DistributedDataParallel(student, device_ids=[args.gpu], broadcast_buffers=False) if \
         'swin' in args.arch else nn.parallel.DistributedDataParallel(student, device_ids=[args.gpu])
     # teacher and student start with the same weights
-    teacher_without_ddp.load_state_dict(student.module.state_dict())
+    teacher_without_ddp.load_state_dict(student.module.state_dict(), strict=False)
     # there is no backpropagation through the teacher, so no need for gradients
     for p in teacher.parameters():
         p.requires_grad = False
@@ -626,7 +626,7 @@ if __name__ == '__main__':
     save_dir = "/shared/eng/bpt3/data/UniViT/save"
     data_path = "/shared/eng/bpt3/data/UniViT/data/trainingDataset.pkl"
     SEED = 4
-    GPU_NUM = 0
+    GPU_NUM = 1
     parser = argparse.ArgumentParser('iBOT', parents=[get_args_parser()])
     args = parser.parse_args()
     args.gpu = GPU_NUM

@@ -253,7 +253,7 @@ data = pickle.load(open(adni_dir + "mri_data.pkl", "rb"))
 for subject_id in tqdm(data, desc="Processing ADNI MRI"):
     for date in sorted(data[subject_id].keys()):
         path = f'{adni_dir}MRI/{data[subject_id][date]["filename"]}'
-        dimensions = data[subject_id][date]["shape"]
+        dimensions = np.load(path).shape
         dimensions = (dimensions[2], dimensions[0], dimensions[1])
         note = [t - 100 for t in tokenizer.encode(f"T1-weighted MRI of a brain")]
         labels = adni_labels[subject_id] if subject_id in adni_labels else None
@@ -268,7 +268,7 @@ data = pickle.load(open(adni_dir + "av45_pet_data.pkl", "rb"))
 for subject_id in tqdm(data, desc="Processing ADNI AV45 PET"):
     for date in sorted(data[subject_id].keys()):
         path = f'{adni_dir}AV45_PET/{data[subject_id][date]["filename"]}'
-        dimensions = data[subject_id][date]["shape"]
+        dimensions = np.load(path).shape
         dimensions = (dimensions[2], dimensions[0], dimensions[1])
         note = [t - 100 for t in tokenizer.encode(f"Amyloid PET scan of a brain")]
         labels = adni_labels[subject_id] if subject_id in adni_labels else None
@@ -283,7 +283,7 @@ data = pickle.load(open(adni_dir + "fdg_pet_data.pkl", "rb"))
 for subject_id in tqdm(data, desc="Processing ADNI FDG PET"):
     for date in sorted(data[subject_id].keys()):
         path = f'{adni_dir}FDG_PET/{data[subject_id][date]["filename"]}'
-        dimensions = data[subject_id][date]["shape"]
+        dimensions = np.load(path).shape
         dimensions = (dimensions[2], dimensions[0], dimensions[1])
         note = [t - 100 for t in tokenizer.encode(f"FDG PET scan of a brain")]
         labels = adni_labels[subject_id] if subject_id in adni_labels else None

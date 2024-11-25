@@ -22,7 +22,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 2
+cuda_num = 0
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
@@ -51,9 +51,20 @@ config.dropout_path_rate = 0.0
 config.use_checkpoint = False
 config.spatial_dims = 3
 
+def _clean_state_dict(state_dict):
+    new_state_dict = {}
+    for key, value in state_dict.items():
+        if key.startswith('module.'):
+            new_key = key[len('module.'):]  # Remove the 'module.' prefix
+            new_state_dict[new_key] = value
+        else:
+            new_state_dict[key] = value  # Otherwise, keep the key as it is
+            
+    return new_state_dict
+
 model = model = SSLHead(config)
 state_dict = torch.load(f"{save_dir}/{model_key}.pt", map_location='cpu')['state_dict']
-model.load_state_dict(state_dict)
+model.load_state_dict(_clean_state_dict(state_dict))
 model.eval()
 model.requires_grad_(False)
 model.to(device)

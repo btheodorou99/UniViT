@@ -25,6 +25,17 @@ from src.baselines.external.swinunetr.optimizers.lr_scheduler import WarmupCosin
 import torch.multiprocessing
 torch.multiprocessing.set_sharing_strategy('file_system')
 
+def _clean_state_dict(state_dict):
+    new_state_dict = {}
+    for key, value in state_dict.items():
+        if key.startswith('module.'):
+            new_key = key[len('module.'):]  # Remove the 'module.' prefix
+            new_state_dict[new_key] = value
+        else:
+            new_state_dict[key] = value  # Otherwise, keep the key as it is
+            
+    return new_state_dict
+
 def main():
     def save_ckp(state, checkpoint_dir):
         torch.save(state, checkpoint_dir)
@@ -87,7 +98,7 @@ def main():
     parser.add_argument("--space_x", default=1.5, type=float, help="spacing in x direction")
     parser.add_argument("--space_y", default=1.5, type=float, help="spacing in y direction")
     parser.add_argument("--space_z", default=2.0, type=float, help="spacing in z direction")
-    parser.add_argument("--batch_size", default=16, type=int, help="number of batch size")
+    parser.add_argument("--batch_size", default=32, type=int, help="number of batch size")
     parser.add_argument("--effective_batch_size", default=config.batch_size, type=int, help="effective batch size")
     parser.add_argument("--sw_batch_size", default=1, type=int, help="number of sliding window batch size")
     parser.add_argument("--lr", default=config.lr, type=float, help="learning rate")
@@ -105,11 +116,22 @@ def main():
 
     args = parser.parse_args()
     args.device = "cuda:0"
-    args.resume = "/shared/eng/bpt3/data/UniViT/save/swinunetr.pt"
-
+    
     model = SSLHead(args)
-    model.to(args.device)
 
+    args.resume = "/shared/eng/bpt3/data/UniViT/save/swinunetr.pt"
+    if args.resume and os.path.exists(args.resume):
+        model_pth = args.resume
+        model_dict = torch.load(model_pth, map_location="cpu")
+        model.epoch = model_dict["epoch"]
+        global_step = model_dict["global_step"]
+        model.load_state_dict(_clean_state_dict(model_dict["state_dict"]))
+    else:
+        global_step = 0
+        
+    model = torch.nn.DataParallel(model, device_ids=[0,1,2])
+    model = model.to(args.device)
+    
     if args.opt == "adam":
         optimizer = optim.Adam(params=model.parameters(), lr=args.lr, weight_decay=args.decay)
 
@@ -119,13 +141,7 @@ def main():
     elif args.opt == "sgd":
         optimizer = optim.SGD(params=model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.decay)
 
-    global_step = 0
     if args.resume and os.path.exists(args.resume):
-        model_pth = args.resume
-        model_dict = torch.load(model_pth, map_location="cpu")
-        model.epoch = model_dict["epoch"]
-        global_step = model_dict["global_step"]
-        model.load_state_dict(model_dict["state_dict"])
         optimizer.load_state_dict(model_dict["optimizer"])
 
     if args.lrdecay:
@@ -150,9 +166,9 @@ def main():
         global_step = train(args, global_step, train_loader, pbar)
         checkpoint = {"epoch": args.epochs, "state_dict": model.state_dict(), "optimizer": optimizer.state_dict(), "global_step": global_step}
         save_ckp(checkpoint, args.logdir + "/swinunetr.pt")
-        torch.save(model.state_dict(), args.logdir + "swinunetr.pth")
+        torch.save(model.module.state_dict(), args.logdir + "swinunetr.pth")
         
-    torch.save(model.state_dict(), args.logdir + "swinunetr.pth")
+    torch.save(model.module.state_dict(), args.logdir + "swinunetr.pth")
     save_ckp(checkpoint, args.logdir + "/swinunetr.pt")
 
 
