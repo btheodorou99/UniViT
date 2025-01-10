@@ -43,6 +43,12 @@ tune_data = {task: tune_data[task] for task in valid_tasks}
 test_data = {task: test_data[task] for task in valid_tasks}
 
 
+def print_both(text, filename="seg_univit.log"):
+    print(text)
+    with open(filename, "a") as f:
+        print(text, file=f)
+
+
 depth_ratio = config.max_depth // config.depth_patch_size
 
 model = UniViT(
@@ -65,7 +71,6 @@ model = UniViT(
     config.patch_prob,
     extra_cls=True,
 ).to(device)
-print("Loading previous model")
 model.load_state_dict(
     torch.load(f"{save_dir}/{model_key}.pt", map_location="cpu")["model"]
 )
@@ -96,7 +101,7 @@ def bootstrap_mean_error(data, num_samples=1000, metric=np.mean):
 
 allResults = {}
 for task in valid_tasks:
-    print(f"Downstream Evaluation on {task}")
+    print_both(f"Downstream Evaluation on {task}")
     task_tune = tune_data[task]
     task_test = test_data[task]
     task_data = task_tune + task_test
@@ -142,7 +147,6 @@ for task in valid_tasks:
         config.representation_size,
         config.patch_size,
         config.segmentation_depth,
-        full_slice=True,
     ).to(device)
     optimizer = torch.optim.Adam(downstream.parameters(), lr=config.downstream_lr)
     for epoch in tqdm(
@@ -202,6 +206,6 @@ for task in valid_tasks:
         keyVals = bootstrap_mean_error(results[key])
         taskResults[key] = keyVals[0]
         taskResults[f"{key} PM"] = keyVals[1]
-    print(taskResults)
+    print_both(taskResults)
     allResults[task] = taskResults
 pickle.dump(allResults, open(f"{save_dir}/{model_key}_segmentationResults.pkl", "wb"))

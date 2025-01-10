@@ -16,16 +16,16 @@ import torch.multiprocessing
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 
-# SEED = 4
-# random.seed(SEED)
-# np.random.seed(SEED)
-# torch.manual_seed(SEED)
+SEED = 4
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
 
 config = Config()
-cuda_num = 5
+cuda_num = 0
 device = torch.device(f"cuda:{cuda_num}" if torch.cuda.is_available() else "cpu")
-# if torch.cuda.is_available():
-#     torch.cuda.manual_seed_all(SEED)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(SEED)
 
 data_dir = "/shared/eng/bpt3/data/UniViT/data"
 save_dir = "/shared/eng/bpt3/data/UniViT/save"
@@ -269,3 +269,4 @@ torch.save(
 
 pbar.close()
 pickle.dump(loss_plot, open(f"{save_dir}/univit_noLoss_loss_plot.pkl", "wb"))
+pickle.dump(knn_plot, open(f"{save_dir}/univit_noLoss_knn_plot.pkl", "wb"))

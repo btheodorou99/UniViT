@@ -5,16 +5,17 @@ import pickle
 import numpy as np
 from tqdm import tqdm
 from src.config import Config
+from src.models.univit import UniViT
 from torch.utils.data import DataLoader
-from src.models.downstream import SegmentationModel
-from src.baselines.external.medcoss.model import MedCoSS
+from src.models.downstream import SegmentationModelWImage
 from src.baselines.segmentation.metrics import get_LesionWiseResults
-from src.baselines.segmentation.data.image_dataset import ImageDataset
+from src.baselines.segmentation.data.image_dataset_both import ImageDataset
 
 import torch.multiprocessing
-torch.multiprocessing.set_sharing_strategy('file_system')
+
+torch.multiprocessing.set_sharing_strategy("file_system")
 MAX_PENALTY = 1000
-model_key = "medcoss"
+model_key = "univit"
 
 SEED = 4
 random.seed(SEED)
@@ -31,19 +32,34 @@ data_dir = "/shared/eng/bpt3/data/UniViT/data"
 save_dir = "/shared/eng/bpt3/data/UniViT/save"
 tune_data = pickle.load(open(f"{data_dir}/tuningDataset.pkl", "rb"))
 tune_data = {
-    task: [[p] for p in tune_data[task] if p[4] is not None and isinstance(p[4], str) and os.path.exists(p[4])] for task in tune_data
+    task: [
+        [p]
+        for p in tune_data[task]
+        if p[4] is not None and isinstance(p[4], str) and os.path.exists(p[4])
+    ]
+    for task in tune_data
 }
 test_data = pickle.load(open(f"{data_dir}/testingDataset.pkl", "rb"))
 test_data = {
-    task: [[p] for p in test_data[task] if p[4] is not None and isinstance(p[4], str) and os.path.exists(p[4])] for task in test_data
+    task: [
+        [p]
+        for p in test_data[task]
+        if p[4] is not None and isinstance(p[4], str) and os.path.exists(p[4])
+    ]
+    for task in test_data
 }
 task_map = pickle.load(open(f"{data_dir}/taskMap.pkl", "rb"))
-valid_tasks = [t for t in tune_data if tune_data[t] and test_data[t] if t in task_map and task_map[t] == "Segmentation"]
+valid_tasks = [
+    t
+    for t in tune_data
+    if tune_data[t] and test_data[t]
+    if t in task_map and task_map[t] == "Segmentation"
+]
 tune_data = {task: tune_data[task] for task in valid_tasks}
 test_data = {task: test_data[task] for task in valid_tasks}
 
 
-def print_both(text, filename="seg_medcoss.log"):
+def print_both(text, filename="seg_univit2.log"):
     print(text)
     with open(filename, "a") as f:
         print(text, file=f)
@@ -51,7 +67,7 @@ def print_both(text, filename="seg_medcoss.log"):
 
 depth_ratio = config.max_depth // config.depth_patch_size
 
-model = MedCoSS(
+model = UniViT(
     config.max_height,
     config.max_width,
     config.max_depth,
@@ -68,6 +84,8 @@ model = MedCoSS(
     config.dropout,
     config.attention_dropout,
     config.mask_prob,
+    config.patch_prob,
+    extra_cls=True,
 ).to(device)
 model.load_state_dict(
     torch.load(f"{save_dir}/{model_key}.pt", map_location="cpu")["model"]
@@ -76,10 +94,12 @@ model.eval()
 model.requires_grad_(False)
 
 bce_loss = torch.nn.BCELoss()
+
+
 def dice_loss(pred, target, smooth=1e-5):
     intersection = (pred * target).sum()
     union = pred.sum() + target.sum()
-    dice = (2. * intersection + smooth) / (union + smooth)
+    dice = (2.0 * intersection + smooth) / (union + smooth)
     return 1 - dice
 
 
@@ -99,6 +119,9 @@ def bootstrap_mean_error(data, num_samples=1000, metric=np.mean):
 
 allResults = {}
 for task in valid_tasks:
+    if "MEN" not in task:
+        continue
+
     print_both(f"Downstream Evaluation on {task}")
     task_tune = tune_data[task]
     task_test = test_data[task]
@@ -113,7 +136,7 @@ for task in valid_tasks:
         pin_memory=True,
         persistent_workers=True,
     )
-    valid_img = [i for i, (_, _, img) in enumerate(global_loader) if img.max() > 0]
+    valid_img = [i for i, (_, _, img, _) in enumerate(global_loader) if img.max() > 0]
     task_data = [task_data[i] for i in valid_img]
     del global_data, global_loader, valid_img
 
@@ -141,7 +164,7 @@ for task in valid_tasks:
         persistent_workers=True,
     )
 
-    downstream = SegmentationModel(
+    downstream = SegmentationModelWImage(
         config.representation_size,
         config.patch_size,
         config.segmentation_depth,
@@ -150,7 +173,7 @@ for task in valid_tasks:
     for epoch in tqdm(
         range(config.downstream_epochs), leave=False, desc=f"{task} Tuning"
     ):
-        for batch_images, batch_dimensions, batch_labels in tqdm(
+        for batch_images, batch_dimensions, batch_labels, batch_guide in tqdm(
             task_tune_loader, desc=f"{task} Tuning Epoch {epoch+1}", leave=False
         ):
             bs, nv, nt, nd, nc, nh, nw = batch_images.shape
@@ -158,13 +181,14 @@ for task in valid_tasks:
             batch_dimensions = batch_dimensions.view(bs * nv, 4)
             batch_images = batch_images.to(device)
             batch_labels = batch_labels.to(device)
+            batch_guide = batch_guide.to(device)
             with torch.no_grad():
                 representations = model.embed_patches(batch_images, batch_dimensions)
                 representations = representations.reshape(
                     bs, nv, depth_ratio, -1, config.representation_size
                 )
                 representations = representations[:, :, 0, :, :]
-            predictions = downstream(representations)
+            predictions = downstream(representations, batch_guide)
             loss = bce_loss(predictions, batch_labels) + dice_loss(
                 predictions, batch_labels
             )
@@ -173,13 +197,14 @@ for task in valid_tasks:
             optimizer.zero_grad()
 
     results = {}
-    for batch_images, batch_dimensions, batch_labels in tqdm(
+    for batch_images, batch_dimensions, batch_labels, batch_guide in tqdm(
         task_test_loader, desc=f"{task} Testing", leave=False
     ):
         bs, nv, nt, nd, nc, nh, nw = batch_images.shape
         batch_images = batch_images.view(bs * nv, nt, nd, nc, nh, nw)
         batch_dimensions = batch_dimensions.view(bs * nv, 4)
         batch_images = batch_images.to(device)
+        batch_guide = batch_guide.to(device)
         batch_labels = batch_labels.numpy()
         with torch.no_grad():
             representations = model.embed_patches(batch_images, batch_dimensions)
@@ -187,7 +212,7 @@ for task in valid_tasks:
                 bs, nv, depth_ratio, -1, config.representation_size
             )
             representations = representations[:, :, 0, :, :]
-            predictions = downstream(representations)
+            predictions = downstream(representations, batch_guide)
             predictions = (predictions > 0.5).cpu().numpy()
 
         for i in range(len(predictions)):
