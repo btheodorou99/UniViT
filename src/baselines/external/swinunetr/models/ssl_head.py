@@ -75,10 +75,12 @@ class SSLHead(nn.Module):
                 nn.Conv3d(dim // 16, args.in_channels, kernel_size=1, stride=1),
             )
 
-    def forward(self, x, features_only=False):
+    def forward(self, x, features_only=False, embeddings_only=False):
         x_out = self.swinViT(x)[4]
         # apply swinViT_out to dim 1 of x_out
         x_out = self.swinViT_out(x_out.permute(0, 2, 3, 4, 1)).permute(0, 4, 1, 2, 3)
+        if embeddings_only:
+            return x_out.permute(0, 2, 3, 4, 1)
         x4_reshape = x_out.flatten(start_dim=2, end_dim=4)
         x4_reshape = x4_reshape.transpose(1, 2)
         if features_only:

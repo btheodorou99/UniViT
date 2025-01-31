@@ -7,7 +7,7 @@ from tqdm import tqdm
 from src.config import Config
 from torchvision import transforms
 from torch.utils.data import DataLoader
-from src.models.downstream import SegmentationModel
+from src.models.downstream import SegmentationModelWImage
 from src.baselines.segmentation.metrics import get_LesionWiseResults
 from src.baselines.external.ibot.models.vision_transformer import vit_base
 from src.baselines.segmentation.data.image_dataset_pretrained import ImageDataset
@@ -182,7 +182,7 @@ for task in valid_tasks:
         persistent_workers=True,
     )
 
-    downstream = SegmentationModel(
+    downstream = SegmentationModelWImage(
         config.representation_size,
         config.patch_size,
         config.segmentation_depth,
@@ -199,13 +199,13 @@ for task in valid_tasks:
 
             # Flatten everything for 2D embedding before 3D segmentation
             bs, depth, channels, height, width = batch_images.shape
-            batch_images = batch_images.view(-1, channels, height, width)
+            flat_images = batch_images.view(-1, channels, height, width)
             with torch.no_grad():
-                representations = model(batch_images, return_all_tokens=True)[:, 1:]
+                representations = model(flat_images, return_all_tokens=True)[:, 1:]
                 representations = representations.reshape(
                     bs, depth, -1, config.representation_size
                 )
-            predictions = downstream(representations)
+            predictions = downstream(representations, batch_images)
             loss = bce_loss(predictions, batch_labels) + dice_loss(
                 predictions, batch_labels
             )
@@ -222,13 +222,13 @@ for task in valid_tasks:
 
         # Flatten everything for 2D embedding before 3D segmentation
         bs, depth, channels, height, width = batch_images.shape
-        batch_images = batch_images.view(-1, channels, height, width)
+        flat_images = batch_images.view(-1, channels, height, width)
         with torch.no_grad():
-            representations = model(batch_images, return_all_tokens=True)[:, 1:]
+            representations = model(flat_images, return_all_tokens=True)[:, 1:]
             representations = representations.reshape(
                 bs, depth, -1, config.representation_size
             )
-            predictions = downstream(representations)
+            predictions = downstream(representations, batch_images)
             predictions = (predictions > 0.5).cpu().numpy()
 
         for i in range(len(predictions)):

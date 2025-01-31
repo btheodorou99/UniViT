@@ -62,7 +62,7 @@ def _clean_state_dict(state_dict):
             
     return new_state_dict
 
-model = model = SSLHead(config)
+model = SSLHead(config)
 state_dict = torch.load(f"{save_dir}/{model_key}.pt", map_location='cpu')['state_dict']
 model.load_state_dict(_clean_state_dict(state_dict))
 model.eval()

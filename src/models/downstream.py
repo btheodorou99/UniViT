@@ -134,6 +134,8 @@ class SegmentationModelWImage(nn.Module):
             return [4, 4]
         elif patch_size == 14:
             return [7, 2]
+        elif patch_size == 32:
+            return [8, 4]
 
     def forward(self, x, full_image):
         """

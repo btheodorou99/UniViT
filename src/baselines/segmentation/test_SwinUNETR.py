@@ -5,17 +5,17 @@ import pickle
 import numpy as np
 from tqdm import tqdm
 from src.config import Config
-from src.models.univit import UniViT
 from torch.utils.data import DataLoader
-from src.models.downstream import SegmentationModel
+from src.models.downstream import SegmentationModelWImage
 from src.baselines.segmentation.metrics import get_LesionWiseResults
-from src.baselines.segmentation.data.image_dataset import ImageDataset
+from src.baselines.external.swinunetr.models.ssl_head import SSLHead
+from src.baselines.segmentation.data.image_dataset_swin import ImageDataset
 
 import torch.multiprocessing
-
 torch.multiprocessing.set_sharing_strategy("file_system")
+
 MAX_PENALTY = 1000
-model_key = "univit"
+model_key = "swinunetr"
 
 SEED = 4
 random.seed(SEED)
@@ -59,44 +59,43 @@ tune_data = {task: tune_data[task] for task in valid_tasks}
 test_data = {task: test_data[task] for task in valid_tasks}
 
 
-def print_both(text, filename="seg_univit.log"):
+def print_both(text, filename="seg_swin.log"):
     print(text)
     with open(filename, "a") as f:
         print(text, file=f)
 
 
-depth_ratio = config.max_depth // config.depth_patch_size
+config.in_channels = 1
+config.feature_size = 48
+config.dropout_path_rate = 0.0
+config.use_checkpoint = False
+config.spatial_dims = 3
 
-model = UniViT(
-    config.max_height,
-    config.max_width,
-    config.max_depth,
-    config.max_time,
-    config.num_channels,
-    config.patch_size,
-    config.depth_patch_size,
-    config.time_patch_size,
-    config.representation_size,
-    config.num_layers,
-    config.num_heads,
-    config.projection_size,
-    config.mlp_dim,
-    config.dropout,
-    config.attention_dropout,
-    config.mask_prob,
-    config.patch_prob,
-    extra_cls=True,
-).to(device)
+def _clean_state_dict(state_dict):
+    new_state_dict = {}
+    for key, value in state_dict.items():
+        if key.startswith('module.'):
+            new_key = key[len('module.'):]  # Remove the 'module.' prefix
+            new_state_dict[new_key] = value
+        else:
+            new_state_dict[key] = value  # Otherwise, keep the key as it is
+            
+    return new_state_dict
+
+model = SSLHead(config)
+state_dict = torch.load(f"{save_dir}/{model_key}.pt", map_location='cpu')['state_dict']
+model.load_state_dict(_clean_state_dict(state_dict))
+model.eval()
+model.requires_grad_(False)
+model.to(device)
 
 bce_loss = torch.nn.BCELoss()
-
 
 def dice_loss(pred, target, smooth=1e-5):
     intersection = (pred * target).sum()
     union = pred.sum() + target.sum()
     dice = (2.0 * intersection + smooth) / (union + smooth)
     return 1 - dice
-
 
 def bootstrap_mean_error(data, num_samples=1000, metric=np.mean):
     # Generate bootstrap samples
@@ -114,14 +113,7 @@ def bootstrap_mean_error(data, num_samples=1000, metric=np.mean):
 
 allResults = {}
 for task in valid_tasks:
-    if "GLI" in task or "GoAT" in task or "MEN-RT" in task:
-        continue
     print_both(f"Downstream Evaluation on {task}")
-    model.load_state_dict(
-        torch.load(f"{save_dir}/{model_key}.pt", map_location="cpu")["model"]
-    )
-    model.train()
-
     task_tune = tune_data[task]
     task_test = test_data[task]
     task_data = task_tune + task_test
@@ -135,7 +127,7 @@ for task in valid_tasks:
         pin_memory=True,
         persistent_workers=True,
     )
-    valid_img = [i for i, (_, _, img) in enumerate(global_loader) if img.max() > 0]
+    valid_img = [i for i, (_, img, _) in enumerate(global_loader) if img.max() > 0]
     task_data = [task_data[i] for i in valid_img]
     del global_data, global_loader, valid_img
 
@@ -163,58 +155,74 @@ for task in valid_tasks:
         persistent_workers=True,
     )
 
-    downstream = SegmentationModel(
+    downstream = SegmentationModelWImage(
         config.representation_size,
-        config.patch_size,
+        32,
         config.segmentation_depth,
     ).to(device)
-    downstream.train()
-    model_optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
     optimizer = torch.optim.Adam(downstream.parameters(), lr=config.downstream_lr)
     for epoch in tqdm(
         range(config.downstream_epochs), leave=False, desc=f"{task} Tuning"
     ):
-        for batch_images, batch_dimensions, batch_labels in tqdm(
+        for batch_images, batch_labels, batch_guide in tqdm(
             task_tune_loader, desc=f"{task} Tuning Epoch {epoch+1}", leave=False
         ):
-            bs, nv, nt, nd, nc, nh, nw = batch_images.shape
-            batch_images = batch_images.view(bs * nv, nt, nd, nc, nh, nw)
-            batch_dimensions = batch_dimensions.view(bs * nv, 4)
-            batch_images = batch_images.to(device)
+            bs, nv, nc, nd, nh, nw = batch_images.shape
+            batch_images = batch_images.reshape(bs * nv, nc, nd, nh, nw)
+
+            # Process images in smaller chunks to reduce memory
+            chunk_size = 18  # Adjust based on GPU memory
+            representations = []
+            with torch.no_grad():
+                for i in tqdm(range(0, bs * nv, chunk_size), desc="Embedding Images", leave=False):
+                    chunk_images = batch_images[i:i+chunk_size]
+                    chunk_images = chunk_images.to(device)
+                    chunk_repr = model(chunk_images, embeddings_only=True)
+                    representations.append(chunk_repr.cpu())
+                    del chunk_images, chunk_repr
+                    torch.cuda.empty_cache()
+                
+                # Combine chunks and reshape
+                representations = torch.cat(representations, dim=0)
+                representations = representations.to(device)
+                representations = representations.reshape(bs, nv, -1, config.representation_size)
             batch_labels = batch_labels.to(device)
-            representations = model.embed_patches(batch_images, batch_dimensions)
-            representations = representations.reshape(
-                bs, nv, depth_ratio, -1, config.representation_size
-            )
-            representations = representations[:, :, 0, :, :]
-            predictions = downstream(representations)
+            batch_guide = batch_guide.to(device)
+            predictions = downstream(representations, batch_guide)
             loss = bce_loss(predictions, batch_labels) + dice_loss(
                 predictions, batch_labels
             )
             loss.backward()
             optimizer.step()
-            model_optimizer.step()
             optimizer.zero_grad()
-            model_optimizer.zero_grad()
 
-    model.eval()
-    downstream.eval()
     results = {}
-    for batch_images, batch_dimensions, batch_labels in tqdm(
+    for batch_images, batch_labels, batch_guide in tqdm(
         task_test_loader, desc=f"{task} Testing", leave=False
     ):
-        bs, nv, nt, nd, nc, nh, nw = batch_images.shape
-        batch_images = batch_images.view(bs * nv, nt, nd, nc, nh, nw)
-        batch_dimensions = batch_dimensions.view(bs * nv, 4)
-        batch_images = batch_images.to(device)
-        batch_labels = batch_labels.numpy()
+        bs, nv, nc, nd, nh, nw = batch_images.shape
+        batch_images = batch_images.reshape(bs * nv, nc, nd, nh, nw)
+        
+        # Process images in smaller chunks to reduce memory
+        chunk_size = 18  # Adjust based on GPU memory
+        representations = []
         with torch.no_grad():
-            representations = model.embed_patches(batch_images, batch_dimensions)
-            representations = representations.reshape(
-                bs, nv, depth_ratio, -1, config.representation_size
-            )
-            representations = representations[:, :, 0, :, :]
-            predictions = downstream(representations)
+            for i in tqdm(range(0, bs * nv, chunk_size), desc="Embedding Images", leave=False):
+                chunk_images = batch_images[i:i+chunk_size]
+                chunk_images = chunk_images.to(device)
+                chunk_repr = model(chunk_images, embeddings_only=True)
+                representations.append(chunk_repr.cpu())
+                del chunk_images, chunk_repr
+                torch.cuda.empty_cache()
+            
+            # Combine chunks and reshape
+            representations = torch.cat(representations, dim=0)
+            representations = representations.to(device)
+            representations = representations.reshape(bs, nv, -1, config.representation_size)
+            
+            batch_guide = batch_guide.to(device)
+            batch_labels = batch_labels.numpy()
+            predictions = downstream(representations, batch_guide)
             predictions = (predictions > 0.5).cpu().numpy()
 
         for i in range(len(predictions)):
